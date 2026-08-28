@@ -36,3 +36,15 @@ export function getChapterBySlug(slug: string): Chapter | null {
 
   return { frontmatter: data as ChapterFrontmatter, content };
 }
+
+export function getAllChapters(): ChapterFrontmatter[] {
+  const files = getAllChapterFiles().sort(); // filenames sort correctly since they're zero-padded (01-, 02-...)
+
+  return files
+    .map((file) => {
+      const raw = fs.readFileSync(path.join(CONTENT_DIR, file), "utf-8");
+      const { data } = matter(raw);
+      return data as ChapterFrontmatter;
+    })
+    .filter((chapter) => chapter.published);
+}
