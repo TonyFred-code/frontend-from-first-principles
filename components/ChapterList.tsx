@@ -10,7 +10,7 @@ export function ChapterList({ chapters }: { chapters: ChapterFrontmatter[] }) {
 
   return (
     <>
-      <p className="font-mono text-sm text-blueprint-line mb-2">
+      <p className="font-mono text-sm text-line mb-2">
         {doneCount} of {chapters.length} chapters completed
       </p>
       <h1 className="font-display text-4xl text-signal-orange mb-10">
@@ -23,7 +23,7 @@ export function ChapterList({ chapters }: { chapters: ChapterFrontmatter[] }) {
           return (
             <li
               key={chapter.slug}
-              className="flex gap-4 border-b border-blueprint-line pb-8 last:border-0"
+              className="flex gap-4 border-b border-line pb-8 last:border-0"
             >
               <span className="font-mono text-signal-orange text-lg shrink-0">
                 {String(index + 1).padStart(2, "0")}
@@ -40,10 +40,8 @@ export function ChapterList({ chapters }: { chapters: ChapterFrontmatter[] }) {
                     ✓ done
                   </span>
                 )}
-                <p className="mt-1 text-blueprint-line">
-                  {chapter.description}
-                </p>
-                <span className="font-mono text-xs text-blueprint-line">
+                <p className="mt-1 text-line">{chapter.description}</p>
+                <span className="font-mono text-xs text-line">
                   {chapter.readTime}
                 </span>
               </div>
