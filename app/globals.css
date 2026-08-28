@@ -1,13 +1,32 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --color-ink-900: #14283f;
-  --color-ink-800: #1d3a56;
-  --color-blueprint-line: #35597e;
-  --color-chalk: #edeff3;
+:root {
+  --color-background: #f5f2ea;
+  --color-panel: #ebe6d8;
+  --color-line: #4a6c8c;
+  --color-foreground: #1b2a38;
+  --color-signal-orange: #c96a1f;
+  --color-signal-red: #c23b2f;
+}
+
+.dark {
+  --color-background: #14283f;
+  --color-panel: #1d3a56;
+  --color-line: #35597e;
+  --color-foreground: #edeff3;
   --color-signal-orange: #f2994a;
   --color-signal-red: #e4483b;
+}
+
+@theme inline {
+  --color-background: var(--color-background);
+  --color-panel: var(--color-panel);
+  --color-line: var(--color-line);
+  --color-foreground: var(--color-foreground);
+  --color-signal-orange: var(--color-signal-orange);
+  --color-signal-red: var(--color-signal-red);
 
   --font-display: var(--font-display), sans-serif;
   --font-body: var(--font-body), sans-serif;

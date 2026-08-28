@@ -43,12 +43,12 @@ export default async function ChapterPage({
     <article className="max-w-2xl mx-auto px-6 py-12">
       <Link
         href="/"
-        className="font-mono text-sm text-blueprint-line hover:text-signal-red transition-colors"
+        className="font-mono text-sm text-line hover:text-signal-red transition-colors"
       >
         ← back
       </Link>
 
-      <p className="font-mono text-xs text-blueprint-line mt-6">
+      <p className="font-mono text-xs text-line mt-6">
         {chapter.frontmatter.readTime}
       </p>
       <h1 className="font-display text-4xl text-signal-orange mt-2 mb-4">
@@ -57,7 +57,7 @@ export default async function ChapterPage({
 
       <ChapterCheckbox slug={chapter.frontmatter.slug} />
 
-      <div className="prose prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange mt-8">
+      <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange mt-8">
         <MDXRemote source={chapter.content} />
       </div>
     </article>
