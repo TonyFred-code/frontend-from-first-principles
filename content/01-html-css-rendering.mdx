@@ -6,6 +6,59 @@ description: "How a browser turns markup into pixels."
 published: true
 ---
 
-# HTML, CSS & the Render Pipeline
+## What the browser actually receives
 
-Placeholder content — real chapter text comes later.
+Before there's a "page," there's a response: raw bytes arriving over a TCP connection, framed by HTTP headers, with a body that — if the `Content-Type` says so — the browser will try to parse as HTML. Nothing about a webpage is special to the network layer. It's a byte stream like any other; the browser's rendering engine is what turns it into something visual.
+
+This matters because it explains _when_ things can start happening. A browser doesn't wait for the entire HTML document to arrive before doing anything — it starts parsing as bytes stream in, which is why a slow server can still produce a page that starts rendering before the response finishes.
+
+## HTML parsing → the DOM
+
+The HTML parser reads bytes, decodes them into characters (using the encoding declared in headers or a `<meta charset>` tag), tokenizes those characters into tags and text, and builds a tree of nodes — the **DOM** (Document Object Model).
+
+A few things about this process that aren't obvious from just writing HTML:
+
+- **The parser is forgiving.** Unlike XML, HTML parsing has defined error-recovery rules. `<p>Hello<p>World` doesn't crash — the spec says what to do with the unclosed tag. This is why "invalid" HTML still renders _something_, often not what you intended.
+- **`<script>` tags block parsing by default.** When the parser hits a `<script src="...">` with no `async` or `defer`, it stops building the DOM, fetches the script, executes it, and only then continues. This is the historical reason for the "put scripts at the bottom of `<body>`" convention — and the reason `async`/`defer` exist, to opt out of that blocking behavior.
+- **The DOM is a live tree of objects**, not the HTML text. Once built, JavaScript manipulates DOM nodes directly (`element.textContent = "x"`) — it isn't editing HTML strings.
+
+## CSS parsing → the CSSOM
+
+In parallel, any CSS the browser encounters — external stylesheets, `<style>` blocks — gets parsed into the **CSSOM** (CSS Object Model), a tree of style rules with computed specificity.
+
+Unlike HTML, **CSS parsing blocks rendering entirely** — the browser won't paint anything until it has the full CSSOM, because any later rule could change how earlier elements should look. This is why render-blocking CSS in the `<head>` is standard practice: you want style rules resolved _before_ the user sees unstyled content, not after (avoiding a "flash of unstyled content").
+
+## Merging into the Render Tree
+
+Once both trees exist, the browser combines them into the **Render Tree**: for each DOM node, attach its computed styles from the CSSOM.
+
+Critically, **not every DOM node makes it into the Render Tree.** Elements with `display: none` are excluded entirely — they have no box, take up no space, and aren't painted. This is different from `visibility: hidden`, which _does_ get a box (space is reserved) but isn't painted. That distinction — excluded vs. invisible-but-present — is a common source of layout confusion, and it's a direct consequence of how the Render Tree is built.
+
+## Layout (reflow): computing geometry
+
+With the Render Tree built, the browser computes the exact position and size of every box — this phase is called **Layout**, or **reflow**. It's where `box-sizing`, `flex`, `grid`, margins, and percentages actually get resolved into pixel values.
+
+This is also where a lot of runtime performance cost hides. Reading certain JS properties (`offsetHeight`, `getBoundingClientRect()`, etc.) forces the browser to run layout synchronously _right then_, even if it wasn't otherwise due — because the browser can't answer "how tall is this element" without computing it. Doing this in a loop, interleaved with DOM writes, causes **layout thrashing**: repeated forced synchronous layout, one of the most common real-world causes of janky JS.
+
+## Paint: filling in pixels
+
+Once geometry is known, **Paint** fills in the actual pixels — text, colors, borders, shadows — onto one or more layers (conceptually similar to layers in an image editor).
+
+Paint is typically more expensive than layout for visually complex elements (gradients, shadows, blur), independent of how simple their geometry is.
+
+## Composite: assembling the final frame
+
+Certain properties — most notably `transform` and `opacity` — can be handled by the **compositor** without re-running Layout or Paint at all. The browser can promote an element to its own layer, and animating `transform`/`opacity` on that layer is just moving/fading a pre-rendered image, handled by the GPU.
+
+This is _why_ the standard performance advice is "animate `transform` and `opacity`, not `top`/`left`/`width`/`height`": the former skips layout and paint entirely, the latter forces the full pipeline to re-run on every frame.
+
+## Why this pipeline is worth knowing
+
+Every piece of frontend performance folk wisdom traces back to this pipeline:
+
+- _"Batch your DOM reads and writes"_ — because interleaving them forces repeated synchronous layout.
+- _"Avoid `display: none` toggling for frequent show/hide"_ — it forces the element in and out of the Render Tree, which is more expensive than just changing visibility or opacity.
+- _"Prefer CSS transforms for animation"_ — because it skips Layout and Paint, going straight to Composite.
+- _"Minimize reflows"_ — because Layout is O(document size) in the worst case, not O(1) per change.
+
+None of this is arbitrary advice to memorize — it's a direct consequence of the six-stage pipeline: **Parse → DOM/CSSOM → Render Tree → Layout → Paint → Composite.** Once you know which stage a given change touches, you can predict its cost.
