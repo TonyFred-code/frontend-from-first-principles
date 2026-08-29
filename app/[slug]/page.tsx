@@ -11,6 +11,7 @@ import path from "path";
 import Link from "next/link.js";
 import { ChapterCheckbox } from "@/components/ChapterCheckbox";
 import { ChapterNav } from "@/components/ChapterNav";
+import rehypePrettyCode from "rehype-pretty-code";
 
 export function generateStaticParams() {
   const files = getAllChapterFiles();
@@ -65,7 +66,22 @@ export default async function ChapterPage({
       <ChapterCheckbox slug={chapter.frontmatter.slug} />
 
       <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange mt-8">
-        <MDXRemote source={chapter.content} />
+        <MDXRemote
+          source={chapter.content}
+          options={{
+            mdxOptions: {
+              rehypePlugins: [
+                [
+                  rehypePrettyCode,
+                  {
+                    theme: { light: "github-light", dark: "github-dark" },
+                    keepBackground: false,
+                  },
+                ],
+              ],
+            },
+          }}
+        />{" "}
       </div>
 
       <ChapterNav prev={prev} next={next} />

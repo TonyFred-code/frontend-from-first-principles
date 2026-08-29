@@ -6,6 +6,66 @@ description: "How the browser models a page and reacts to user input."
 published: true
 ---
 
-# The DOM & Events
+## The DOM is a live API, not a snapshot
 
-Placeholder content — real chapter text comes later.
+Chapter 1 covered how HTML gets parsed into the DOM. What matters now is what the DOM actually _is_ once built: not a static description of the page, but a live, mutable object tree that JavaScript reads and writes in real time. Every `<div>` is a `Node` object with properties, methods, and a place in a tree — `document.querySelector(".card")` doesn't return text, it returns a live reference you can mutate directly (`el.textContent = "x"`, `el.classList.add("active")`), and the rendered page updates to match.
+
+This "live tree" model is why so much of frontend work is really tree manipulation: inserting nodes, removing them, walking up to a parent, walking down into children — the DOM API is fundamentally about navigating and editing this tree.
+
+## The event loop: how the browser stays responsive
+
+JavaScript is single-threaded — one call stack, one thing executing at a time. But browsers clearly do many things "at once": animations keep running while a network request is in flight, a click still registers while a `setTimeout` is pending. The **event loop** is the mechanism that makes this work without actual parallelism.
+
+The model, simplified:
+
+- The **call stack** runs synchronous code, one frame at a time, until it's empty.
+- Work that isn't ready yet (a timer, a network response, a user click) gets scheduled instead of run immediately.
+- Two queues hold that scheduled work: the **macrotask queue** (`setTimeout`, DOM events, I/O) and the **microtask queue** (Promise callbacks, `queueMicrotask`).
+- After each macrotask, and after the call stack empties, the engine drains the **entire microtask queue** before doing anything else — including before rendering the next frame or running the next macrotask.
+
+That last point is the one that trips people up: microtasks aren't "processed occasionally," they're processed completely, every time, before the loop moves on. This is why a Promise chain that keeps queueing more microtasks can starve rendering — the browser never gets a turn to paint until the microtask queue is empty.
+
+```js
+console.log("1");
+setTimeout(() => console.log("2"), 0);
+Promise.resolve().then(() => console.log("3"));
+console.log("4");
+// logs: 1, 4, 3, 2
+```
+
+`2` loses to `3` even with a `0ms` delay, because `setTimeout` queues a macrotask, and the microtask queue (the Promise) always drains first.
+
+## Events: bubbling and capturing
+
+When you click an element, the browser doesn't just fire one event on that element — it runs the event through the whole ancestor chain, twice:
+
+1. **Capturing phase** — the event travels from `window` down to the target, top to bottom.
+2. **Target phase** — the event fires on the actual element clicked.
+3. **Bubbling phase** — the event travels back up from the target to `window`, bottom to top.
+
+`addEventListener` listens on the bubbling phase by default; passing `{ capture: true }` listens on the way down instead. Most everyday code only ever deals with bubbling — capturing exists mainly for cases where a parent needs to intercept an event _before_ a child's own handler runs.
+
+Bubbling is why `event.stopPropagation()` exists and why it's easy to misuse: calling it inside a child handler prevents ancestor listeners from ever seeing that event, which can silently break unrelated code (analytics trackers, modals-that-close-on-outside-click) that relied on the event reaching them.
+
+## Event delegation: using bubbling on purpose
+
+Because events bubble, you rarely need a listener on every individual element. Attach one listener to a shared ancestor, and inspect `event.target` to figure out what was actually clicked:
+
+```js
+list.addEventListener("click", (event) => {
+  const item = event.target.closest("li");
+  if (!item) return;
+  console.log("clicked:", item.textContent);
+});
+```
+
+This is **event delegation**, and it's not just a style preference — it solves a real problem. Attaching a listener to every `<li>` means new list items added later have no listener until you remember to add one. A delegated listener on the parent automatically covers elements that don't exist yet, because the bubbling event still passes through the (unchanged) parent. It's also cheaper: one listener instead of thousands for a long list.
+
+## Why this matters
+
+- _"Why did my `setTimeout(fn, 0)` run after my Promise?"_ — because microtasks always drain before the next macrotask.
+- _"Why does clicking a child also trigger my parent's click handler?"_ — that's bubbling, working as designed.
+- _"Why do dynamically-added buttons not respond to clicks?"_ — a listener was attached to elements directly instead of delegated from a stable parent.
+- _"Why did stopPropagation() break my dropdown?"_ — some other part of the app depended on that event bubbling further than the handler let it.
+
+The event loop explains _when_ your code runs relative to everything else happening in the browser. Bubbling and delegation explain _how_ a single click on a small element ends up visible to code attached far above it in the tree. Both are the DOM behaving exactly as specified — the confusion usually comes from not knowing the model, not from the browser doing anything strange.
