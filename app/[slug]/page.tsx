@@ -38,7 +38,27 @@ export async function generateMetadata({
 }) {
   const { slug } = await params;
   const chapter = getChapterBySlug(slug);
-  return { title: chapter?.frontmatter.title ?? "Chapter not found" };
+
+  if (!chapter) return { title: "Chapter not found" };
+
+  const { title, description } = chapter.frontmatter;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `/${slug}` },
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      url: `/${slug}`,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+  };
 }
 
 export default async function ChapterPage({
