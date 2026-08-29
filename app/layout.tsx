@@ -9,6 +9,9 @@ import Link from "next/link.js";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
+import { ScrollProgress } from "@/components/ScrollProgress";
+import { ScrollToTop } from "@/components/ScrollToTop";
+
 const architectsDaughter = Architects_Daughter({
   subsets: ["latin"],
   weight: "400",
@@ -73,6 +76,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <footer className="border-t border-line px-6 py-4 text-sm text-line font-mono">
             Built one render cycle at a time.
           </footer>
+          <ScrollProgress />
+          <ScrollToTop />
         </ThemeProvider>
       </body>
     </html>
