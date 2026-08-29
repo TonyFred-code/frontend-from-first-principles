@@ -66,8 +66,8 @@ export default async function ChapterPage({
   const headings = extractHeadings(chapter.content);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12 flex gap-12">
-      <article className="max-w-2xl flex-1">
+    <div className="max-w-5xl mx-auto px-6 py-12 flex gap-12 min-w-0">
+      <article className="max-w-2xl flex-1 mx-auto min-w-0">
         <Link
           href="/"
           className="font-mono text-sm text-line hover:text-signal-red transition-colors"
