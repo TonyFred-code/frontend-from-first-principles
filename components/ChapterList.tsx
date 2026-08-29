@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useProgress } from "@/lib/useProgress";
 import type { ChapterFrontmatter } from "@/lib/content";
+import { ContinueReading } from "./ContinueReading";
 
 export function ChapterList({ chapters }: { chapters: ChapterFrontmatter[] }) {
   const { completed } = useProgress();
@@ -10,6 +11,7 @@ export function ChapterList({ chapters }: { chapters: ChapterFrontmatter[] }) {
 
   return (
     <>
+      <ContinueReading chapters={chapters} />
       <p className="font-mono text-sm text-line mb-2">
         {doneCount} of {chapters.length} chapters completed
       </p>
