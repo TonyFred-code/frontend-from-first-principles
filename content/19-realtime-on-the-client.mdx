@@ -1,0 +1,85 @@
+---
+title: "Real-time on the Client"
+slug: "realtime-on-the-client"
+readTime: "16 min"
+description: "Why plain HTTP doesn't fit live data, and how WebSockets and SSE each solve it differently."
+published: true
+date: "2026-08-29"
+---
+
+## Why HTTP request/response doesn't fit "live" data
+
+Regular HTTP is built around a simple shape: the client asks a question, the server answers, the connection's job is done. This works fine for a page load, but it has no mechanism for the server to say "something changed" on its own — the server can only ever respond to a request it already received.
+
+The naive fix is **polling**: the client just asks again, repeatedly, on a timer.
+
+```js
+setInterval(async () => {
+  const res = await fetch("/api/messages/latest");
+  const data = await res.json();
+  updateUI(data);
+}, 3000);
+```
+
+This works, but has two real costs. First, **wasted requests** — most polls return "nothing new," meaning the server does work and the client burns bandwidth for no actual update. Second, **latency between the real event and the next poll** — if something changes right after a poll fires, the client won't know until up to a full interval later, which is a real problem for anything meant to feel live (chat, live scores, collaborative editing cursors).
+
+## WebSockets
+
+A **WebSocket** starts as a normal HTTP request, then upgrades into a persistent, bidirectional connection that stays open — the server can push a message to the client at any time, with no request needed to trigger it, and the client can send messages back over the same connection just as freely.
+
+```js
+const socket = new WebSocket("wss://example.com/chat");
+
+socket.addEventListener("message", (event) => {
+  console.log("received:", event.data);
+});
+
+socket.addEventListener("open", () => {
+  socket.send(JSON.stringify({ type: "join", room: "general" }));
+});
+```
+
+This bidirectionality is the key trait: WebSockets are the right fit whenever the client also needs to send data back over the live connection — a chat message, a collaborative cursor position, a multiplayer game input — not just receive updates passively.
+
+## Server-Sent Events (SSE)
+
+**SSE** solves a narrower version of the same problem — server-to-client streaming only, no client-to-server messages over the same channel — using plain HTTP instead of a protocol upgrade. This makes it noticeably simpler to set up and reason about when the client genuinely never needs to push data back over that connection.
+
+```js
+const events = new EventSource("/api/stream");
+
+events.addEventListener("message", (event) => {
+  console.log("received:", event.data);
+});
+```
+
+The server just keeps an HTTP response open and writes new lines to it over time, formatted per the SSE spec (`data: ...\n\n`). Because it's plain HTTP, it inherits things WebSockets have to reimplement — automatic reconnection is built into `EventSource` by default, and standard HTTP infrastructure (proxies, load balancers) generally understands it without special handling, unlike the WebSocket protocol upgrade.
+
+## Choosing between polling, SSE, and WebSockets
+
+A concrete framework, based on two questions:
+
+1. **Does the client ever need to send data back over the live channel** (not just via separate normal HTTP requests, but as part of the same real-time interaction)? If yes → **WebSockets**. If no → SSE is simpler and sufficient.
+2. **How time-sensitive and frequent are the updates?** For genuinely infrequent updates (a dashboard number that changes every few minutes) plain **polling** is often the right call — the complexity of a persistent connection isn't worth it for something this infrequent. For frequent or latency-sensitive updates, reach for SSE or WebSockets depending on directionality per question 1.
+
+Chat and multiplayer interactions almost always need WebSockets (bidirectional, frequent). A live "new posts available" banner or a stock ticker almost always fits SSE (one-directional, frequent). A dashboard that refreshes hourly numbers doesn't need either — polling, or even just a manual refresh, is proportionate to the actual update frequency.
+
+## Reconnection and state reconciliation
+
+A live connection _will_ drop eventually — a laptop sleeps, a network blips, a server restarts for a deploy. "Just reconnect" is necessary but not sufficient, because reconnecting alone doesn't answer: **what happened while the connection was down?**
+
+Two real problems to design for:
+
+- **Missed messages** — if the server pushed three updates while the client was disconnected, a naive reconnect just resumes listening for _new_ messages, silently dropping the ones sent during the gap. A common fix is including a sequence number or timestamp with each message, so on reconnect the client can request "everything since message #142" explicitly rather than assuming nothing was missed.
+- **Stale state** — even with no missed messages, the client's in-memory state may have drifted from the server's actual state during the gap (especially likely for something like collaborative editing). Many real-time systems handle reconnection by re-fetching a fresh full snapshot of the current state via a normal HTTP request, then resuming the live stream from that known-good baseline — rather than trying to patch a potentially-stale in-memory state incrementally.
+
+`EventSource`'s automatic reconnection handles the _connection_ half of this problem for free; it does nothing for the _missed messages_ half, which still needs explicit handling in your own message format and reconnect logic, for both SSE and WebSockets.
+
+## Why this matters
+
+- _"Why do users see chat messages appear in bursts every few seconds instead of instantly?"_ — likely still using polling; a genuinely live interaction like chat calls for WebSockets.
+- _"Why did we pick WebSockets for something that turned out to only ever send data one direction?"_ — SSE would have been simpler and would have gotten automatic reconnection for free.
+- _"Why does the UI show stale or missing data right after a network blip?"_ — reconnection restored the connection but not the state; check whether missed-message handling or a state resync on reconnect exists.
+- _"Why is our real-time dashboard so complex for something that only needs to update once an hour?"_ — the complexity of a persistent connection doesn't match the actual update frequency; plain polling would likely be simpler and sufficient.
+
+The right real-time tool is decided almost entirely by two questions — does data need to flow both ways, and how time-sensitive is it — asking those first prevents reaching for WebSockets everywhere out of habit when SSE or even polling would do the job with far less complexity.

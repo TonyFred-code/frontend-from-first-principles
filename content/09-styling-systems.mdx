@@ -1,0 +1,57 @@
+---
+title: "Styling Systems"
+slug: "styling-systems"
+readTime: "16 min"
+description: "Vanilla CSS, utility-first, and CSS-in-JS are solving the same problems from different angles."
+published: true
+date: "2026-08-29"
+---
+
+## The spectrum
+
+Every styling approach in frontend is answering the same underlying question — "how do I attach styles to markup without those styles leaking, breaking, or becoming unmaintainable at scale" — from a different angle:
+
+- **Vanilla CSS / CSS Modules** — plain stylesheets, either global or scoped per-file by the build tool hashing class names.
+- **Utility-first (Tailwind)** — small, single-purpose classes (`flex`, `text-sm`, `bg-panel`) composed directly in markup instead of writing custom class names.
+- **CSS-in-JS (styled-components, Emotion)** — styles written as JavaScript, colocated with the component that uses them, generating scoped class names at build or run time.
+
+None of these is "correct" in the abstract — they're different points on a curve trading off scoping guarantees, runtime cost, colocation, and how much new syntax a team has to learn. Your own project uses Tailwind (utility-first) with `@theme inline` CSS variables underneath — worth knowing where that choice sits relative to the alternatives, and why.
+
+## Scoping
+
+The oldest problem in CSS is that everything is global by default — a `.card` class defined for one component can silently apply to `.card` somewhere completely unrelated. Each approach solves this differently:
+
+- **Naming conventions** (BEM: `.card__title--active`) solve it socially, not technically — the browser still treats it as global, but sufficiently specific names make collisions unlikely in practice.
+- **CSS Modules** solve it at build time — `styles.card` in your JS compiles to something like `.Card_card__a3f2x` in the actual CSS, guaranteeing no collision, enforced by tooling rather than discipline.
+- **Utility classes** sidestep the problem differently — there's no custom class to collide, because you're composing from a small, shared, purpose-built vocabulary (`p-4`, `text-signal-orange`) instead of inventing new class names per component.
+- **CSS-in-JS** generates a unique class per style definition at build or runtime (`css-1a2b3c`), similar in spirit to CSS Modules but generated from JS template literals or object styles instead of `.css` files.
+
+## Runtime cost
+
+This is where the approaches diverge most sharply in practice. Traditional CSS-in-JS libraries historically injected `<style>` tags into the DOM _at runtime_, meaning the browser had to parse and apply new CSS as components mounted — a real, measurable cost on initial page load and on any component that mounts frequently (like list items in a long, re-rendering list).
+
+Utility-first and CSS Modules avoid this entirely: styles are resolved to plain, static CSS files at _build time_. The browser downloads one CSS file upfront and never needs runtime style computation beyond what browsers already do for any stylesheet. This is a meaningful part of why the ecosystem has broadly moved toward build-time approaches (Tailwind's rise, CSS-in-JS libraries adding "zero-runtime" build-time modes) — not because runtime CSS-in-JS was a bad idea, but because the performance cost became harder to justify as sites got bigger and users' devices got more varied.
+
+## Colocation vs. separation of concerns
+
+There's a genuine, ongoing disagreement here, not a settled answer:
+
+- **The colocation argument** (Tailwind, CSS-in-JS): styling is part of a component's implementation, so it should live right next to the markup it styles. Deleting a component means deleting its styles too — nothing gets orphaned in a separate stylesheet nobody remembers to clean up.
+- **The separation-of-concerns argument** (traditional CSS): mixing presentation into markup makes JSX noisy and couples visual design to component structure, when a designer might want to reskin things without touching component logic at all.
+
+Both are defensible. Utility-first specifically gets criticized for verbose class lists in markup (`className="flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1"`), and defended on the grounds that once you're used to reading utility classes, that verbosity is actually more legible than jumping between a JSX file and a separate CSS file to understand what an element looks like.
+
+## Theming
+
+Regardless of which camp a project sits in, most modern styling systems converge on the same underlying mechanism for theming: **CSS custom properties** (CSS variables). This is exactly the pattern your own project uses — `--color-background`, `--color-panel`, and friends, redefined inside a `.dark` selector, consumed everywhere through `@theme inline` mapping them into Tailwind's utility classes.
+
+The reason CSS variables specifically won out as the shared substrate: they're resolved by the browser at paint time, meaning a single class toggle (`.dark` on `<html>`) can instantly repaint the entire page's colors without any JavaScript re-render, any component re-mount, or any CSS-in-JS runtime recalculation. CSS-in-JS libraries doing theming, and Tailwind doing theming, both end up funneling through CSS variables under the hood for exactly this reason — it's the one mechanism that's both framework-agnostic and free at runtime.
+
+## Why this matters
+
+- _"Why does my CSS-in-JS app feel slower on first load than the Tailwind version?"_ — runtime style injection has a real cost that build-time CSS doesn't.
+- _"Why did adding one new component's styles accidentally break a totally different page?"_ — global CSS with no scoping mechanism; consider CSS Modules or a utility-first approach.
+- _"Why does the whole site repaint instantly when I toggle dark mode, with no flash or re-render?"_ — CSS custom properties resolving at paint time, not JS re-computing anything.
+- _"Why does the team keep debating Tailwind's long class lists?"_ — a real, ongoing trade-off between colocation and markup verbosity, not a solved problem with one right answer.
+
+There's no styling system that avoids trade-offs entirely — understanding which trade-off a given project accepted (yours: utility-first, build-time, CSS-variable-driven theming) explains a lot about why the codebase looks the way it does.

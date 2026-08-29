@@ -1,0 +1,97 @@
+---
+title: "Forms, Validation & Controlled vs Uncontrolled Inputs"
+slug: "forms-validation"
+readTime: "16 min"
+description: "How the browser handles forms natively, and what changes once React gets involved."
+published: true
+date: "2026-08-29"
+---
+
+## What a form actually is to the browser
+
+Before any JavaScript touches it, a `<form>` already knows how to submit itself. Every input inside it gets bundled into a `FormData` object keyed by each field's `name` attribute, then sent to wherever `action` points, using whichever `method` you specified (`GET` appends it to the URL as a query string; `POST` sends it as the request body). Hit Enter in a text field, or click a `<button type="submit">`, and the browser does all of this on its own — full page navigation included.
+
+```html
+<form action="/search" method="get">
+  <input name="q" />
+  <button type="submit">Search</button>
+</form>
+```
+
+Submit that, and the browser navigates to `/search?q=whatever-you-typed`. No JavaScript required. This native behavior is why `event.preventDefault()` shows up constantly in form-handling code — it's not boilerplate for its own sake, it's specifically opting out of this default full-page submission so JS can take over instead.
+
+## Controlled inputs
+
+A **controlled input** has its `value` driven entirely by React state — the DOM element never holds a value React doesn't already know about.
+
+```jsx
+function ControlledInput() {
+  const [value, setValue] = useState("");
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+```
+
+Every keystroke fires `onChange`, which updates state, which re-renders the input with that state as its `value`. This round-trip is what makes controlled inputs powerful: state is always the single source of truth, so you can validate, transform, or react to input on every keystroke (character counters, live formatting, disabling a submit button until a field looks valid).
+
+The cost is exactly what it sounds like — a re-render per keystroke. For a handful of fields this is invisible. For a form with dozens of controlled fields, or fields driving expensive downstream renders, it can become noticeable.
+
+## Uncontrolled inputs
+
+An **uncontrolled input** manages its own value internally, the way a plain HTML input always has. React sets an initial value via `defaultValue` and then leaves it alone; you read the current value only when you need it, typically via a ref at submit time.
+
+```jsx
+function UncontrolledInput() {
+  const inputRef = useRef(null);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    console.log(inputRef.current.value);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input ref={inputRef} defaultValue="" />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+No re-render on every keystroke — the DOM just does what DOM inputs do natively, and React steps in only at the moment you actually need the value. This is the better trade-off for simple one-shot forms (a search box, a login form) where you don't need to react to every character as it's typed, and it's also closer to how a plain HTML form behaves if you're integrating with non-React code.
+
+Neither approach is universally "correct." Controlled fits anything needing live feedback; uncontrolled fits anything where the value only matters at submission time.
+
+## Validation timing
+
+_When_ you validate shapes the experience as much as _what_ you validate:
+
+- **On submit** — simplest to implement, but a user can fill out an entire long form only to be told at the end that a field three screens up was wrong.
+- **On blur** — validate a field once the user leaves it. Catches mistakes early without interrupting mid-typing.
+- **On change** — validates every keystroke. Useful for things like password-strength meters, but applied to something like "is this email valid" it tends to flash error states on partially-typed input, which reads as the form nagging before the user is even done.
+
+A common middle ground: don't validate a field on change until it has been touched once (usually via blur or a prior submit attempt) — after that, live-validate on change so the error clears the moment it's fixed.
+
+## Native validation vs JS validation
+
+HTML has real, working validation built in — `required`, `pattern`, `type="email"`, `minlength`/`maxlength` — enforced by the browser with zero JavaScript. The `:invalid` CSS pseudo-class lets you style a field the moment it fails, and `element.reportValidity()` triggers the browser's own validation UI (that little native tooltip) on demand.
+
+```html
+<input type="email" required pattern=".+@.+\..+" />
+```
+
+So why do most real apps still write JavaScript validation instead of just using this? A few concrete gaps:
+
+- **Cross-field rules** — "confirm password must match password," "end date must be after start date" — native HTML has no concept of one field depending on another.
+- **Custom error messaging** — native validation messages are browser-styled and browser-worded; you can't easily make them match your design system or say something more specific than "please match the requested format."
+- **Server-driven rules** — "this username is already taken" can only be known by asking a server, which native HTML validation has no mechanism for.
+
+In practice, most production forms layer both: native attributes as a free first line of defense (and for accessibility — screen readers understand `required` and `aria-invalid` natively), with JavaScript validation on top for anything native HTML can't express.
+
+## Why this matters
+
+- _"Why does my input feel laggy while typing?"_ — likely a controlled input triggering expensive work on every keystroke; consider debouncing the expensive part, or switching that field to uncontrolled if live reactivity isn't actually needed.
+- _"Why does my error message flash and disappear while I'm still typing?"_ — on-change validation running before the user has finished, with no "has this field been touched" gate.
+- _"Why doesn't my custom error styling show up?"_ — you're relying on native browser validation UI, which doesn't respect your CSS the way a custom-rendered error message would.
+- _"Why did the page reload when I clicked submit?"_ — no `event.preventDefault()` in the submit handler, so the browser's native full-page submission ran anyway.
+
+Forms are one of the few places where "what the browser already does for free" and "what your framework adds on top" sit directly next to each other — knowing where the line is (native submission and validation vs. controlled state and custom rules) is most of what keeps a form's behavior predictable instead of feeling like a black box.

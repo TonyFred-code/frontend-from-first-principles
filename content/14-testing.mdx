@@ -1,0 +1,45 @@
+---
+title: "Testing"
+slug: "testing"
+description: "What tests actually buy you, and why the pyramid shape isn't dogma — it's a cost trade-off."
+published: true
+date: "2026-08-29"
+---
+
+## What testing actually buys you
+
+A test doesn't prove code is correct — it proves a _specific, stated expectation_ still holds. "Correct" is usually too broad a claim for any test suite to make; "this function returns `2 min` for 250 words" is a claim a test can actually verify. The real value of a test suite isn't certainty — it's **confidence that a change didn't silently break something else**, which matters more as a codebase grows past the size one person can hold in their head at once.
+
+## The testing pyramid: a cost trade-off, not a rule
+
+You'll commonly see testing described as a pyramid: many unit tests at the base, fewer integration tests in the middle, and few end-to-end tests at the top. This shape isn't arbitrary — it reflects a real trade-off. Unit tests are fast and cheap to write and run; E2E tests are slow, more realistic, and more expensive to maintain. The pyramid shape is what you get from optimizing "maximum confidence per unit of cost" — not a rule that a project without a wide base of unit tests is doing something wrong. A project's actual shape should reflect _where its real risk lives_, not blind adherence to a diagram.
+
+## Unit tests: one function, in isolation
+
+A unit test verifies a single function or component's behavior in isolation, with no real dependencies (network, filesystem, database) involved. Your own project already has real examples of this — the Vitest tests covering `calculateReadTime`, `extractHeadings`, and `getDisplayDate` in `lib/content.ts` are unit tests: pure functions, given known input, checked against known expected output, no rendering or network involved. This is the cheapest, fastest layer to write and run, which is exactly why it forms the pyramid's base.
+
+## Component tests: the middle layer
+
+Between a pure-function unit test and a full E2E test sits **component testing** — rendering a component in a simulated environment (not a real browser) and asserting on what it produces, including simulated user interaction like clicks and typed input.
+
+The dominant philosophy here, associated with Testing Library, is worth internalizing specifically: **test what a user would actually see and do, not internal implementation details.** Querying for a button by its visible text (`getByText("Submit")`) rather than by an internal CSS class or component name means the test still passes if you refactor the component's internals, and only breaks if the actual user-facing behavior changes — which is closer to what you actually want a test to protect.
+
+## E2E tests: the real thing, slower
+
+**End-to-end tests** (via tools like Playwright or Cypress) drive an actual browser through an actual user flow against a running version of the real app — clicking real buttons, navigating real pages, asserting on real rendered output. This is the closest a test gets to "does this actually work," and it's also the slowest and most expensive layer: a real browser has to launch, real navigation has to happen, and small unrelated changes (a renamed CSS class, a slightly different load time) can make a test fail without the underlying behavior actually being broken — commonly called **flakiness**.
+
+This cost is exactly why E2E tests sit at the pyramid's tip: you want a handful covering your most critical user flows (checkout, login, chapter-completion tracking, for a site like this), not comprehensive coverage of every possible page state.
+
+## Mocking: isolating a unit, at a cost
+
+**Mocking** replaces a real dependency (a network call, a database, the current date/time) with a fake, controlled stand-in — so a test can check "does my function handle a 500 error correctly" without actually needing a server to return one.
+
+The genuine risk worth naming: a mock is only useful if it accurately reflects how the real dependency behaves. A mock that always succeeds when the real API sometimes fails gives you a test suite that passes while masking a real bug — false confidence is worse than no test at all, because it actively hides the gap rather than leaving it visibly untested.
+
+## CI: tests only count if they actually run
+
+A test suite that exists but that developers have to remember to run manually eventually gets skipped under deadline pressure — this is exactly the gap **Continuous Integration** closes. Your own `feat/lint-ci-tests` branch set this up concretely: a GitHub Actions workflow that runs lint, format-checking, tests, and the production build automatically on every push to `main` and every pull request. The test suite's value doesn't come from existing — it comes from being _enforced_, consistently, without relying on anyone remembering to run `npm test` before merging.
+
+## The practical takeaway
+
+Testing effort should track **risk and change-frequency**, not a coverage percentage treated as a goal in itself. A pure utility function that's touched often and used everywhere (like `calculateReadTime`) is cheap to test and valuable to protect. A one-off script you'll run once is usually not worth testing at all. Chasing 100% coverage as an abstract target tends to produce tests that assert trivial things just to move the number — confidence, not coverage percentage, is the actual thing worth optimizing for.

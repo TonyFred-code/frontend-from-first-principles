@@ -1,0 +1,77 @@
+---
+title: "Performance"
+slug: "performance"
+readTime: "18 min"
+description: "Bundle size, code-splitting, lazy loading, and Core Web Vitals — what actually makes a site feel slow."
+published: true
+date: "2026-08-29"
+---
+
+## Bundle size as the root cause of a lot of perceived slowness
+
+Before a browser can run a single line of your JavaScript, it has to download it, parse it, and execute it — and every one of those steps scales with how much code you shipped. A site that "works fine" on the machine it was built on can feel sluggish for real users simply because the developer's machine has a fast connection and a powerful CPU, and most real users don't.
+
+This is why bundle size is often the single highest-leverage performance lever: it's not one slow function somewhere, it's the sheer amount of code the browser has to process before the page becomes interactive at all. A bundle analyzer (Next.js ships one via `@next/bundle-analyzer`) turns this from a vague feeling into a concrete, inspectable breakdown — which dependency is actually contributing the most weight, often revealing a single unexpectedly large library pulled in for one small feature.
+
+## Code-splitting
+
+The fix for "the bundle is too big" is rarely "write less code" — it's **code-splitting**: shipping only the JavaScript a given page or interaction actually needs, deferring the rest until it's needed.
+
+**Route-based splitting** happens mostly for free in frameworks like Next.js — each route's code is a separate chunk, so visiting the homepage doesn't download the code for every other page in the app.
+
+**Component-based splitting** is more manual, using `React.lazy` (or Next's `dynamic()`) to defer a specific component's code until it's actually rendered:
+
+```jsx
+import { lazy, Suspense } from "react";
+
+const HeavyChart = lazy(() => import("./HeavyChart"));
+
+function Dashboard() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <HeavyChart />
+    </Suspense>
+  );
+}
+```
+
+`HeavyChart`'s code — and whatever charting library it depends on — isn't in the initial bundle at all. It's fetched only when `Dashboard` actually renders it, which is exactly the right trade-off for something like a chart library that might be large but isn't needed for the page to be usable.
+
+## Lazy loading beyond code
+
+The same "defer until needed" principle applies just as much to assets as to JavaScript. Images are usually the single largest asset type on a page, and loading every image immediately — including ones far below the fold that a user may never scroll to — wastes bandwidth on content that isn't yet, and may never be, visible.
+
+The native `loading="lazy"` attribute tells the browser to defer loading an `<img>` until it's near the viewport:
+
+```html
+<img src="/chart.png" loading="lazy" alt="Q3 revenue chart" />
+```
+
+`next/image` builds on this with additional automatic behavior — responsive sizing (serving a smaller image to a smaller viewport instead of one large image scaled down by CSS), modern format conversion (WebP/AVIF where supported), and lazy loading by default for anything not explicitly marked as a priority image.
+
+The same idea extends beyond images — any below-the-fold section (comments, related-content widgets, footers with heavy embeds) is a candidate for the same "don't pay the cost until it's actually needed" treatment as code-splitting.
+
+## Core Web Vitals
+
+Google's Core Web Vitals give concrete, measurable definitions to what used to be vague feelings like "this feels slow":
+
+- **LCP (Largest Contentful Paint)** — time until the largest visible element (usually a hero image or heading) finishes rendering. A slow LCP often traces back to a large unoptimized image, a slow server response, or render-blocking CSS/JS delaying when the browser can even start painting.
+- **INP (Interaction to Next Paint)** — how long the page takes to visually respond after a user interaction (a click, a keypress). A slow INP usually means the main thread is busy running expensive JavaScript when the interaction happens, delaying the browser from getting to render the response.
+- **CLS (Cumulative Layout Shift)** — how much visible content unexpectedly shifts position during load. Classic causes: an image with no explicit width/height that causes surrounding content to jump down once it loads, or a late-injected banner/ad that pushes everything below it.
+
+Each of these maps to a concrete, fixable cause rather than being an abstract score — "our LCP is bad" is actionable in a way "the site feels slow" isn't.
+
+## Where perf work actually pays off
+
+The instinct to optimize is easy to misdirect toward whatever feels slow subjectively, rather than what's actually the bottleneck. **Measure first.** Lighthouse (built into Chrome devtools) gives a lab-based estimate across all three Core Web Vitals plus other diagnostics, run against a single, controlled load. Real User Monitoring (RUM) tools go further, capturing actual Core Web Vitals from real visitors on real devices and real network conditions — which can look meaningfully different from a fast developer laptop on a fast connection.
+
+Optimizing a function that runs once and takes 2ms, while ignoring a 400KB unused dependency shipped to every visitor, is a common trap — the fix that feels like "real engineering" (micro-optimizing a function) is often much lower-impact than the unglamorous fix (checking what's actually in the bundle, or noticing an image is 3x the resolution it's ever displayed at). Profiling and bundle analysis exist specifically to redirect effort toward whichever fix will actually move the measured numbers.
+
+## Why this matters
+
+- _"Why does the site feel slow on mobile even though it's fast on my laptop?"_ — bundle size and network conditions matter far more on real user devices than on a fast dev machine; check RUM data, not just local testing.
+- _"Why did the layout jump right as the page finished loading?"_ — almost always CLS from an image or injected element with no reserved space.
+- _"Why does clicking a button feel delayed even though the click handler is fast?"_ — INP issue; something else on the main thread (unrelated JS, a large re-render) is blocking the browser from responding promptly.
+- _"Why did adding one small feature suddenly slow down the whole page?"_ — check the bundle analyzer; a single dependency pulled in for that feature may be disproportionately large.
+
+Performance work is mostly about knowing where to look before deciding what to fix — the tools that make the invisible (bundle contents, real user metrics, exactly which paint or interaction was slow) visible are what turn "the site feels slow" into an actual, fixable diagnosis.

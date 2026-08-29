@@ -1,0 +1,101 @@
+---
+title: "PWA & Offline Patterns"
+slug: "pwa-offline-patterns"
+readTime: "16 min"
+description: "What makes a web app installable, how service workers make offline possible, and the caching strategies behind it."
+published: true
+date: "2026-08-29"
+---
+
+## What makes a web app "installable"
+
+A Progressive Web App (PWA) is a regular website that opts into behaving more like a native app — installable to a home screen, launchable without a browser chrome, capable of working offline. The first piece of this is entirely declarative: a **web app manifest**, a JSON file linked from the page's `<head>`.
+
+```json
+{
+  "name": "Frontend from First Principles",
+  "short_name": "FFP",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14283f",
+  "theme_color": "#c96a1f",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+```
+
+`display: "standalone"` is what removes the browser's address bar and navigation chrome when launched from a home screen — the app looks and feels native even though it's the same web page underneath. This manifest alone is enough for a browser to offer an "Install" prompt. It does nothing for offline behavior on its own, though — that requires the next piece.
+
+## Service workers as the foundation
+
+A **service worker** is a script that runs in its own thread, separate from the page, with no direct access to the DOM — and critically, it can keep running even when no tab has the site open, and it sits _between_ the page and the network, able to intercept every fetch request the page makes.
+
+```js
+// sw.js
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    caches
+      .match(event.request)
+      .then((cached) => cached || fetch(event.request)),
+  );
+});
+```
+
+This interception point is the entire mechanism that makes offline behavior possible — without a service worker sitting in the request path, there's no way for a web app to serve anything when the network request would otherwise just fail. Registering one from the page:
+
+```js
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js");
+}
+```
+
+Once registered, the service worker persists across page loads (until updated or unregistered) and continues intercepting requests on every subsequent visit.
+
+## Caching strategies
+
+Once a service worker can intercept requests, the actual behavior comes down to which caching strategy it implements for a given kind of request — there's no single "correct" strategy, because different content has different freshness needs:
+
+- **Cache-first** — check the cache, serve it if present, only hit the network on a cache miss. Best for content that rarely changes (fonts, icons, versioned JS/CSS bundles) where staleness isn't a real risk.
+- **Network-first** — try the network, fall back to cache only if the network fails. Best for content where freshness matters more than speed (an API response for live data), accepting a cache fallback purely as an offline safety net.
+- **Stale-while-revalidate** — serve the cached version immediately (fast), while simultaneously fetching a fresh version in the background to update the cache for _next_ time. A good middle ground for content that changes occasionally but where showing something instantly matters more than showing the absolute latest version on this exact request.
+
+```js
+// Stale-while-revalidate
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    caches.open("v1").then(async (cache) => {
+      const cached = await cache.match(event.request);
+      const fetchPromise = fetch(event.request).then((response) => {
+        cache.put(event.request, response.clone());
+        return response;
+      });
+      return cached || fetchPromise;
+    }),
+  );
+});
+```
+
+## What offline actually means in practice
+
+"Works offline" spans a real spectrum, and most apps don't need the extreme end of it:
+
+- **Full offline** — the entire app shell (HTML/CSS/JS) plus enough data is cached that the app is fully functional with zero network. Realistic for content that's mostly static once loaded (like this very chapter site, if chapters were precached).
+- **Graceful degradation** — the app shows a clear offline state instead of a broken one: a dedicated offline fallback page for uncached routes, or queuing user actions (like a form submission) to sync automatically once connectivity returns, via the Background Sync API.
+
+Choosing "full offline" for something that genuinely needs live server data (a chat app, a live dashboard) is usually the wrong target — graceful degradation, communicating clearly that you're offline and what's stale, is more honest and often more useful than pretending offline and online are the same experience.
+
+## Common pitfalls
+
+- **Stale cache serving old code after a deploy** — a cache-first strategy applied to your own JS/CSS bundles means users can keep getting an old cached version of your app indefinitely, even after you've shipped a fix. This needs a versioning strategy: name caches per build (`v1`, `v2`, a content hash), and have the service worker's `activate` event delete old cache versions once a new one takes over.
+- **Assuming offline "just works" without testing it directly** — Chrome DevTools has a Network tab throttling option specifically for this ("Offline"), which simulates true offline conditions rather than just a slow connection. Testing on a real device with airplane mode is even more reliable, since some edge cases (like a service worker that hasn't finished installing yet) only show up outside the simulated environment.
+
+## Why this matters
+
+- _"Why are users seeing an old broken version of the app after we deployed a fix?"_ — likely a cache-first service worker still serving a stale cached bundle; check cache versioning and the activate-event cleanup.
+- _"Why does the app show a blank screen instead of anything useful when offline?"_ — no offline fallback defined; a cache miss with no fallback just fails the request outright.
+- _"Why does data feel stale even though the app is 'working'?"_ — check which caching strategy is applied to that request; network-first or stale-while-revalidate might fit better than cache-first for that content.
+- _"Why did our offline testing pass locally but fail for real users?"_ — simulated throttling in devtools doesn't always match real offline conditions; test with airplane mode on an actual device.
+
+Offline support isn't a checkbox you flip on — it's a set of deliberate decisions about which content deserves which caching strategy, made concrete by the service worker sitting directly in the request path.

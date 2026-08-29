@@ -1,0 +1,50 @@
+---
+title: "Browser Storage"
+slug: "browser-storage"
+description: "Cookies, localStorage, sessionStorage, and IndexedDB — what each is actually for, and where the real security line sits."
+published: true
+date: "2026-08-29"
+---
+
+## Why browser storage exists at all
+
+HTTP, by default, is stateless — every request is independent, with no memory of any previous one. If a server wants to recognize "this is the same user who logged in a moment ago," or a page wants to remember a preference across visits, something has to actually persist that information somewhere. Browser storage mechanisms are the answer to that gap, and they differ mainly in **who can see the data, how long it lasts, and how much it can hold.**
+
+## Cookies: the oldest mechanism, sent automatically
+
+Cookies predate every other mechanism here, and their defining feature is also their biggest cost: **a cookie is automatically attached to every matching request sent to its domain**, without your JavaScript doing anything. This is exactly what makes session-based authentication work — the browser sends your session cookie along with every request, and the server recognizes you.
+
+That automatic-sending behavior cuts both ways. It's why cookies are vulnerable to **CSRF** (Cross-Site Request Forgery) — a malicious site can trigger a request to your bank's domain, and the browser will happily attach your real session cookie to it, since it doesn't know the request originated somewhere untrustworthy. It's also a genuine performance cost most people don't think about: every cookie set for a domain gets sent with _every_ request to that domain, including requests for images, stylesheets, anything — so oversized cookies add real overhead to every single request, not just the ones that need them.
+
+## localStorage: this project's own choice, and why
+
+`localStorage` is a simple key-value store, synchronous, persisting indefinitely until explicitly cleared — and critically, **never sent to the server automatically**. This project uses it for exactly the kind of data that fits that shape: `useProgress` stores completed chapter slugs, and the theme toggle stores light/dark/system preference — both are purely client-side concerns the server has no need to see on every request.
+
+This is the concrete reason localStorage was the right choice for progress tracking specifically, rather than cookies: there's no server involved in "did the user finish this chapter," so there's no reason to pay the automatic-sending cost cookies carry.
+
+## sessionStorage: the same shape, a narrower lifetime
+
+`sessionStorage` shares localStorage's exact API (`getItem`, `setItem`, same synchronous behavior) but differs in scope: it's tied to a single tab, and clears when that tab closes. It doesn't even persist across a page refresh in a _new_ tab — only within the same tab's session.
+
+The real use case this fits that localStorage doesn't: **data that should genuinely not survive beyond the current visit** — a multi-step form's in-progress state, so closing the tab and reopening the site later doesn't leave stale partial data lying around indefinitely the way localStorage would.
+
+## IndexedDB: when key-value strings aren't enough
+
+Both localStorage and sessionStorage store only strings, with practical size limits in the low megabytes. **IndexedDB** exists for genuinely structured data — objects, larger datasets, indexed querying — closer to an actual database running in the browser than a simple key-value store.
+
+The notable design choice: IndexedDB's API is **asynchronous**, unlike localStorage/sessionStorage's synchronous one. This isn't an arbitrary API design difference — it reflects the fact that IndexedDB is meant to hold meaningfully larger amounts of data, and a synchronous read of a large dataset would block the main thread, freezing the page's UI for however long that read takes. localStorage gets away with being synchronous specifically _because_ it's meant for small amounts of data; IndexedDB's use case guarantees that assumption won't hold.
+
+## The security-relevant line: what JavaScript can actually read
+
+This is worth stating precisely, since it's a common point of confusion: **`localStorage`, `sessionStorage`, and ordinary cookies are all fully readable by any JavaScript running on the page** — including malicious script injected via an XSS vulnerability. If an attacker can run JS on your page at all, none of these three offer any protection; the data is just sitting there for `document.cookie` or `localStorage.getItem` to read.
+
+The one exception is a cookie marked **`httpOnly`** — set by the server with a flag that makes it genuinely invisible to JavaScript entirely, readable only by the browser's own request-sending mechanism. This is why session tokens are conventionally stored in `httpOnly` cookies rather than localStorage, despite localStorage being simpler to work with: it's the one storage mechanism actually designed to survive an XSS vulnerability, rather than being trivially exposed by one.
+
+## Matching mechanism to actual need
+
+- **Server needs to see it on every request, automatically** → cookies (ideally `httpOnly` for anything sensitive).
+- **Client-only, simple key-value, should persist indefinitely** → localStorage (this project's progress tracking and theme preference).
+- **Client-only, should not survive beyond the current tab/visit** → sessionStorage.
+- **Structured or larger data, needs querying** → IndexedDB.
+
+The mistake worth avoiding isn't using the "wrong" one technically — most of these can be made to hold almost anything with enough effort. It's reaching for whichever's most familiar (usually localStorage, since its API is simplest) without checking whether its actual properties — persistence, visibility to the server, exposure to XSS — genuinely fit what you're storing.

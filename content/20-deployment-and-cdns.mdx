@@ -1,0 +1,59 @@
+---
+title: "Deployment & CDNs"
+slug: "deployment-and-cdns"
+readTime: "16 min"
+description: "What a CDN actually does, static vs. server deployment, cache headers, and how Vercel's model fits together."
+published: true
+date: "2026-08-29"
+---
+
+## What a CDN actually does
+
+A **CDN (Content Delivery Network)** solves a physics problem, not just a software one: a server in one location takes measurably longer to respond to a request from the other side of the world than to one nearby, simply because data takes time to travel over distance. A CDN works around this by keeping copies of your static assets (JS, CSS, images, and often fully pre-rendered HTML) on servers distributed across many geographic **edge locations**, and routing each visitor's request to whichever copy is physically closest to them.
+
+The practical effect: a visitor in Lagos and a visitor in São Paulo can both get a fast response for the same static asset, each served from a nearby edge server, instead of both round-tripping to a single origin server that's necessarily far from at least one of them. This is why CDN usage is close to universal for anything public-facing — it's a direct latency win with very little downside for content that doesn't change per-request.
+
+## Static vs. server-rendered deployment
+
+This connects directly to Chapter 12's rendering strategies. What actually gets deployed, and where, depends on which strategy a given page uses:
+
+- **Fully static (SSG)** — every page is pre-built into plain HTML files at build time. Deployment is just "put these files somewhere a CDN can serve them" — no server needs to run at request time at all. Your project's chapter pages, built via `generateStaticParams`, fall into this category: each chapter's HTML exists as a file the moment the build finishes.
+- **Server-rendered (SSR) or API routes** — some or all responses need to be generated per-request (fresh data, personalization, or a backend endpoint) — this requires an actual running server (or Vercel's serverless/edge functions standing in for one) to execute code on each request, not just serve a pre-built file.
+
+A given project can genuinely mix both — static pages served straight from the CDN, alongside a few API routes or SSR pages that still run server code per request. Knowing which pages in your own app are which is the direct answer to "why does this page load instantly and that one doesn't."
+
+## Cache headers and invalidation
+
+A CDN's speed advantage only materializes if it's actually allowed to cache things — which is controlled by the `Cache-Control` HTTP header on each response. The standard, widely-used pattern pairs two different caching rules for two different kinds of content:
+
+- **Hashed, immutable assets** (`main.a3f92c.js`, `styles.7b21e.css`) get `Cache-Control: public, max-age=31536000, immutable` — cache this for a year, never revalidate. This is safe specifically _because_ the filename includes a content hash: if the file's contents ever change, the build produces a new filename, so there's no risk of serving stale content under an old, still-cached name.
+- **HTML documents** get something closer to `Cache-Control: no-cache` (or a very short max-age) — always check with the origin before serving, since HTML is what references the (possibly newly-hashed) asset filenames, and serving stale HTML would mean pointing at asset filenames that may no longer exist.
+
+This pairing — cache assets forever, revalidate HTML constantly — is what lets a CDN aggressively cache the bulk of a page's weight (the JS/CSS/images) while still guaranteeing every visitor gets HTML that correctly points at the current build's asset filenames.
+
+## Vercel's model specifically
+
+Since this project deploys to Vercel, a few concrete mechanics worth knowing:
+
+- **Git-based deploys** — pushing to a branch triggers a build automatically; no manual deploy step or separate CI-to-deploy pipeline to maintain.
+- **Preview deployments per PR/branch** — every branch (like each `feat/*` branch used throughout this project) gets its own live, shareable URL automatically, separate from production — useful for reviewing a feature in an actually-deployed state before merging, rather than only testing locally.
+- **Edge network** — Vercel's CDN and edge/serverless functions are the same infrastructure your static chapter pages and any future API routes both run on, meaning the "static vs. server-rendered" split above is handled transparently by the platform rather than needing separate hosting setups for each.
+
+## Environment variables and build-time vs. runtime config
+
+A common source of real confusion: in Next.js, environment variables prefixed `NEXT_PUBLIC_` are inlined into the JavaScript bundle **at build time** — meaning they become plain, visible strings in the shipped client code, and critically, changing that variable's value in your hosting dashboard does **nothing** until the next build runs, since the old value is already baked into already-built files.
+
+```
+NEXT_PUBLIC_API_URL=https://api.example.com
+```
+
+Non-prefixed variables stay server-only and are read at runtime by server code (API routes, `getServerSideProps`-style functions) — these _can_ be changed without a rebuild, since server code reads `process.env` fresh on each invocation rather than having the value inlined into a static file. Mixing these up in either direction causes two distinct, confusing bugs: putting a secret in a `NEXT_PUBLIC_` variable ships it publicly to every visitor's browser; expecting a non-prefixed variable to be readable in client-side code fails silently, since it was never sent to the browser at all.
+
+## Why this matters
+
+- _"Why does an image load instantly for me but slowly for a user in another country?"_ — check whether it's actually being served through the CDN's edge network, or hitting a single origin server directly.
+- _"Why are users still seeing an old version of a page after we deployed a fix?"_ — likely a caching misconfiguration on the HTML itself, not the assets; HTML should almost never be cached long-term the way hashed JS/CSS safely can be.
+- _"Why did changing an environment variable in the dashboard not change anything?"_ — if it's a `NEXT_PUBLIC_` variable, it's baked in at build time; a new deploy is required, not just a config change.
+- _"Why does a preview URL for a branch behave differently than production?"_ — worth checking whether an environment variable differs between preview and production environments in the hosting dashboard, since these are often configured separately.
+
+Deployment isn't a separate concern bolted onto the end of building an app — the rendering strategy chosen back in Chapter 12 directly determines what actually gets deployed and how, and understanding the CDN/caching layer underneath explains most of the "why is this fast here and slow there" and "why isn't my change showing up" questions that come up once an app is live.

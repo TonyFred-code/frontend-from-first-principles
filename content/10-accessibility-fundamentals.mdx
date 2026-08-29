@@ -1,0 +1,68 @@
+---
+title: "Accessibility Fundamentals"
+slug: "accessibility-fundamentals"
+readTime: "17 min"
+description: "Semantic HTML, the accessibility tree, ARIA, keyboard navigation, and contrast — the basics that carry most of the weight."
+published: true
+date: "2026-08-29"
+---
+
+## Semantic HTML as the foundation
+
+The single highest-leverage accessibility decision in frontend work happens before any ARIA attribute or JavaScript: choosing the right HTML element for the job. A `<button>` and a `<div onClick={...}>` can look and behave identically to a sighted mouse user, but they are nowhere close to equivalent underneath.
+
+`<button>` comes with, for free, with zero extra code:
+
+- Keyboard focusability (it's in the natural tab order)
+- Activation via both Enter and Space
+- An implicit `role="button"` announced to screen readers
+- Correct behavior inside forms, disabled states, etc.
+
+A `<div onClick>` has none of this. To make it equivalent, you'd need to manually add `tabindex="0"`, a keydown handler for both Enter and Space, `role="button"`, and manage focus styling yourself — reimplementing, imperfectly, what `<button>` already does natively. This is the core reason "use the semantic element" is repeated so often in accessibility guidance: it isn't a style preference, it's avoiding a pile of manual reimplementation that's easy to get subtly wrong.
+
+## The accessibility tree
+
+Screen readers don't read the visual page — they read the **accessibility tree**, a parallel structure the browser derives from the DOM, computed from each element's role, name, state, and value. Two elements that look identical on screen can produce completely different accessibility tree nodes depending on their underlying HTML and ARIA.
+
+This is why visual layout and accessible structure can diverge without anyone noticing during normal (sighted, mouse-driven) testing — the page can look perfectly fine while the accessibility tree underneath it is missing labels, has the wrong roles, or is missing elements from the tab order entirely. Browser devtools generally include an accessibility tree inspector (a real, direct way to check what a screen reader would actually announce) — worth using early rather than guessing.
+
+## ARIA — when and when not to use it
+
+ARIA (Accessible Rich Internet Applications) attributes exist to describe custom widgets that don't map to any native HTML element — a combobox, a tab panel, a custom slider. The first rule of ARIA, stated directly in the spec itself, is: **no ARIA is better than bad ARIA.**
+
+The reason: ARIA attributes override what the browser would otherwise correctly infer from semantic HTML. Slap `role="button"` on something without also giving it keyboard behavior, and you've told screen reader users "this is a button" while it functions like nothing at all when they try to activate it via keyboard — worse than not labeling it, since it now sets an expectation it fails to meet.
+
+The practical hierarchy:
+
+1. Use a native HTML element if one exists for what you need (`<button>`, `<nav>`, `<dialog>`).
+2. Only reach for ARIA when building something genuinely custom with no native equivalent — and when you do, ARIA is a contract: `role="tab"` means you're also responsible for implementing arrow-key navigation between tabs, because that's what real tabs do.
+3. Never use ARIA to fix broken markup instead of fixing the markup.
+
+## Keyboard navigation
+
+A meaningful fraction of users — not just screen reader users, but anyone with a motor impairment, or simply anyone who prefers not to reach for a mouse — navigates entirely via keyboard. Two things matter most:
+
+- **Focus order** should follow visual/logical reading order. This mostly falls out for free from correct DOM order plus semantic elements, but gets broken by things like `tabindex` values greater than 0 (which reorder focus in ways that rarely match intent) or absolutely-positioned elements that visually appear elsewhere than their DOM position.
+- **Visible focus states** — removing `outline: none` on `:focus` without replacing it with an equally visible alternative is one of the most common accessibility regressions, because it looks like a harmless style cleanup and breaks silently for keyboard users only (a sighted mouse user testing the change would never notice).
+
+Common traps worth naming specifically:
+
+- **Modals that don't trap focus** — Tab should cycle within the modal while it's open, not escape to elements behind it that are supposedly hidden.
+- **Custom dropdowns unreachable by keyboard** — a `<div>`-based dropdown with only `onClick` handlers is invisible to keyboard-only users entirely, not just harder to use.
+
+## Color contrast and not relying on color alone
+
+WCAG defines minimum contrast ratios between text and its background — **4.5:1** for normal text, **3:1** for large text, at the AA level most projects target. This isn't an arbitrary bureaucratic number; it's calibrated against real limits of human color perception, including common forms of color blindness and low vision.
+
+This ties directly back to your own design tokens: `signal-orange` and `signal-red` need to be checked against both the light `--color-background` (`#f5f2ea`) and dark `--color-background` (`#14283f`) values independently, since a color that passes contrast against one can fail against the other. Tools like the browser's own contrast checker (usually built into the color picker in devtools) or WebAIM's contrast checker give a direct pass/fail against WCAG thresholds.
+
+The second half of this principle is **never relying on color alone to convey meaning** — a form field turning red on error is invisible information to a colorblind user unless it's paired with something non-color-dependent: an icon, a text message, a border style change. "Required fields are in red" fails this; "required fields are marked with a red asterisk _and_ the word (required)" doesn't.
+
+## Why this matters
+
+- _"Why did our accessibility audit flag a div that looks exactly like a button?"_ — it functions like a button visually but isn't reachable or activatable by keyboard, and has no accessible role.
+- _"Why do screen reader users report our custom dropdown as 'broken' when it works fine visually?"_ — the accessibility tree likely doesn't reflect the widget's actual behavior; check whether ARIA roles were added without the keyboard interactions they imply.
+- _"Why did removing that outline style break something?"_ — it removed the only visible indicator of keyboard focus, invisible to whoever made the change if they were testing with a mouse.
+- _"Why does our error state fail an accessibility review even though it's red and clearly visible?"_ — color-only signaling; screen reader and colorblind users need a non-color cue too.
+
+Accessibility work has a reputation for being an afterthought bolted on at the end — most of it is actually just correct, semantic HTML applied consistently from the start, which is also, not coincidentally, usually the simpler code to write and maintain.
