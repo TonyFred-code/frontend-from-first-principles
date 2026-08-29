@@ -16,6 +16,7 @@ import {
   TableOfContents,
 } from "@/components/TableOfContents";
 import rehypeSlug from "rehype-slug";
+import { Pre } from "@/components/Pre";
 
 export function generateStaticParams() {
   return getAllChapters().map((chapter) => ({ slug: chapter.slug }));
@@ -96,6 +97,7 @@ export default async function ChapterPage({
         <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange prose-pre:bg-transparent prose-pre:p-0 mt-8">
           <MDXRemote
             source={chapter.content}
+            components={{ pre: Pre }}
             options={{
               mdxOptions: {
                 rehypePlugins: [
