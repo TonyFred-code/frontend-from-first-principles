@@ -16,10 +16,14 @@ export function Pre(props: ComponentProps<"pre">) {
 
   return (
     <div className="relative group">
-      <pre ref={preRef} {...props} />
+      <pre
+        ref={preRef}
+        {...props}
+        className={`overflow-x-auto max-w-full ${props.className ?? ""}`}
+      />
       <button
         onClick={handleCopy}
-        className="absolute top-2 right-2 p-1.5 rounded bg-panel border border-line opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 p-1.5 rounded bg-panel border border-line opacity-100 pointer-events-auto transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:pointer-events-auto"
         aria-label="Copy code"
       >
         {copied ? (
