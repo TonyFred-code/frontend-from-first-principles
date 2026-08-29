@@ -1,0 +1,57 @@
+---
+title: "Client-Side Routing"
+slug: "client-side-routing"
+description: "How navigation works without a page reload, and the browser API every router is built on."
+published: true
+date: "2026-08-29"
+---
+
+## Routing without a reload
+
+In a traditional multi-page site, clicking a link means: browser discards the current page, sends a fresh HTTP request, waits for a new HTML document, throws away all JS state, and starts over. Client-side routing exists to avoid that — navigating to a new "page" without leaving the currently-loaded JavaScript application at all. The URL still changes, the content still changes, but no full document reload happens.
+
+This is worth stating precisely because it's easy to think of client-side routing as "a faster version of normal navigation." It's not faster HTTP — it's _no HTTP request for the page itself_ (though the new "page" may fetch its own data).
+
+## Why a plain `<a>` tag doesn't do this
+
+A regular `<a href="/chapters/dom-events">` triggers the browser's default navigation behavior — a full reload — because that's literally what anchor tags are for, and the browser has no way to know your JavaScript wants to intercept it.
+
+A router's `<Link>` component (Next.js's `<Link>`, React Router's `<Link>`, etc.) looks like an anchor tag but does something different under the hood: it listens for the click, calls `event.preventDefault()` to stop the browser's default reload, then manually updates the URL and swaps in new content using JavaScript. The visual and semantic behavior (it's still a real `<a>` in the rendered HTML, so right-click/"open in new tab" still works) is preserved; only the _default click_ behavior is intercepted.
+
+## The History API: the actual primitive underneath
+
+Every client-side router, regardless of framework, is built on the same browser feature: the **History API**.
+
+```js
+history.pushState({}, "", "/chapters/dom-events");
+```
+
+This changes the URL shown in the address bar and adds an entry to the browser's session history — _without_ triggering a network request or reload. It's the single primitive that makes client-side routing possible at all; frameworks build matching, rendering, and data-fetching logic on top of it, but the URL-changing mechanism itself is just this.
+
+The companion piece is the `popstate` event, which fires when the user clicks the browser's back/forward buttons — routers listen for this event and re-render based on the new URL, which is _why_ back/forward buttons work correctly with client-side routing at all: they're not doing anything special, they're just triggering the same event a router already knows how to respond to.
+
+## Matching URLs to components
+
+Once a router can detect "the URL changed," it needs to decide what to render. This usually comes in a few flavors:
+
+- **Static routes**: `/about` maps to exactly one component.
+- **Dynamic segments**: `/chapters/:slug` — the `:slug` part is captured as a parameter and handed to the matched component. This is the exact mechanism behind this site's own `[slug]` folder — `[slug]` in Next.js's file-based routing _is_ a dynamic segment.
+- **Catch-alls**: `/docs/*` — matches any depth of nested path, common for documentation trees or 404 fallback handling.
+
+## Nested routes and layouts
+
+Flat route tables (one big list mapping URL → component) work for small apps, but most real applications have **shared layout** across sections — a sidebar that persists across `/settings/profile` and `/settings/billing`, for instance. Rebuilding that sidebar on every route change, or manually re-implementing "don't re-render the parts that didn't change," gets unwieldy fast in a flat model.
+
+This is why frameworks like Next.js structure routing around **nested folders**, where a `layout.tsx` wraps everything below it in the folder tree. The routing structure directly mirrors the UI's actual nesting — a route isn't just "which component to show," it's "which layouts wrap that component, and which of those layouts are already mounted and shouldn't remount."
+
+## What breaks if a router mismanages history
+
+A well-behaved client router keeps three things in sync: the URL, the rendered content, and the browser's history stack. Common failure modes when this goes wrong:
+
+- **Back button does nothing** — usually means navigation used `replaceState` instead of `pushState` (overwriting the current history entry instead of adding a new one), so there's no previous client-side entry to go back to.
+- **Back button skips a "page"** — the router updated content without touching history at all, so the browser's history stack doesn't match what the user actually saw.
+- **Scroll position lost or wrongly preserved** — routers generally need to explicitly decide "should this navigation scroll to top, or restore the previous scroll position," since the browser's native reload behavior (which handled this for free) is bypassed entirely.
+
+## This site, as a working example
+
+The routing you've been building throughout this project _is_ client-side routing: Next.js's `<Link>` component intercepts clicks, the App Router's folder structure (`app/[slug]/page.tsx`) defines dynamic matching, and `layout.tsx` provides the persistent header/footer that doesn't remount between chapter pages. Everything in this chapter isn't abstract — it's the mechanism this exact site relies on, one layer down from where you've been working.

@@ -1,0 +1,62 @@
+---
+title: "State Management"
+slug: "state-management"
+description: "What state actually is, why prop drilling happens, and what problem each layer of tooling solves."
+published: true
+date: "2026-08-29"
+---
+
+## What "state" actually means
+
+Not every piece of data in a component is state. **State is specifically data that changes over time and, when it changes, causes the UI to re-render.** A prop passed down from a parent isn't state in the component receiving it — it's state _somewhere above_, just handed down. A value computed from other data (`fullName = firstName + " " + lastName`) isn't state either — it's a **derived value**, and storing it in its own state variable is a common beginner mistake, since now two things can get out of sync where only one should exist.
+
+The practical test: if you can calculate a value from state you already have, during render, it shouldn't be state itself.
+
+## Local state is the default, and that's not a limitation
+
+Most state genuinely belongs to a single component — a form input's current value, whether a dropdown is open, which tab is active. This is **local state**, and reaching for `useState` inside the component that owns it is the correct default, not a stepping stone to something more sophisticated. The instinct to reach for a "real state management solution" from the start is usually premature — most components never need anything else.
+
+## Lifting state up — and where it stops working
+
+When two sibling components need to share state (a filter dropdown and a list that filters based on it), the fix is **lifting state up**: move the state to their nearest common parent, and pass it down as props to both.
+
+This works cleanly for a few levels. The problem is what happens as the component tree gets deeper: state that's genuinely needed five levels down has to be threaded as a prop through every intermediate component, even ones that don't use it themselves — they're just relaying it. This is **prop drilling**, and it's worth naming precisely because the _pain isn't state itself_ — it's the plumbing cost of passing it through components that have no actual interest in it.
+
+## Context: not a state manager, a wiring shortcut
+
+React's Context API is often introduced as "the solution to prop drilling," which is accurate but easy to misread as "Context is a state management tool." It isn't, really — **Context doesn't hold state or manage updates; it just lets a value skip the intermediate props** and be read directly by any descendant that subscribes to it.
+
+The state itself still has to live somewhere (usually `useState` or `useReducer` in a provider component) — Context is the delivery mechanism, not the storage.
+
+The real cost worth knowing: **every component consuming a Context re-renders whenever that Context's value changes** — even if the specific piece of data that component cares about didn't change. A Context holding `{ user, theme, cart }` means a component that only reads `theme` still re-renders when `cart` updates. This is exactly the gap dedicated state libraries fill.
+
+## Why dedicated state libraries exist
+
+Libraries like Redux, Zustand, and Jotai solve the granularity problem Context has: they let components subscribe to _just the slice of state they actually use_, so unrelated updates don't trigger unrelated re-renders. The differences between them are largely about API style and how explicit the "write" side is (Redux's dispatched actions and reducers vs. Zustand's more direct store mutations) — but the core problem they're all solving is the same: scale beyond what Context's all-or-nothing subscription model handles well.
+
+This is why "which state library should I use" is often the wrong first question — the right first question is whether you've actually outgrown local state and Context at all.
+
+## Server state is a different problem entirely
+
+This is the distinction most introductions to state skip: **data fetched from a server isn't the same category of thing as UI state**, even though it's tempting to just dump it into `useState` and treat it the same way.
+
+Server state has properties client state doesn't:
+
+- It can go **stale** — the server's copy may have changed since you fetched it.
+- It's often needed in **multiple components** that didn't request it themselves.
+- It needs **loading and error states** as first-class concerns, not just the data itself.
+- It benefits from **caching and deduplication** — if two components request the same data, you don't want two network requests.
+
+Treating server-fetched data as ordinary component state is _why_ so many apps end up with subtle bugs: stale data shown after a mutation, duplicate fetches, no shared cache between components that need the same data. Tools like React Query and SWR exist specifically to handle this category — not because `useState` is technically incapable of holding server data, but because it doesn't handle any of the actual hard parts (caching, revalidation, deduplication) on its own.
+
+## The practical takeaway
+
+State management isn't "which library wins" — it's a spectrum of trade-offs:
+
+- **Local state** — the default; use it until something concrete forces you elsewhere.
+- **Lifted state** — fine for a couple of levels of sharing.
+- **Context** — solves prop drilling, at the cost of coarse-grained re-renders.
+- **Dedicated client-state libraries** — solve re-render granularity at real scale.
+- **Server-state tools** — a different problem entirely, solving staleness and caching, not UI state.
+
+Picking the right layer means correctly identifying which problem you actually have — not defaulting to the most powerful tool available.

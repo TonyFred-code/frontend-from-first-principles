@@ -1,0 +1,77 @@
+---
+title: "Component Architecture & Composition"
+slug: "component-architecture"
+description: "What a component actually is, and the patterns that keep them from collapsing under their own complexity."
+published: true
+date: "2026-08-29"
+---
+
+## What a component actually is
+
+It's tempting to think of a component as "a reusable piece of HTML" — a `<Button>` instead of writing `<button>` tags everywhere. But that undersells what's actually happening: a component is a function that owns some combination of **state, behavior, and rendering logic**, and returns UI based on that. The reusable-HTML framing is true but incomplete — it's the part you can see, not the part that makes components worth having in the first place.
+
+This distinction matters because it explains _why_ component boundaries are a design decision, not just a copy-paste convenience. Where you draw the line between "one component" and "two components" determines what state lives where, what re-renders when, and what can be reused independently.
+
+## Composition over configuration
+
+A common anti-pattern as components grow: adding a boolean prop for every variation.
+
+```tsx
+<Card showHeader showFooter variant="compact" hideImage bordered />
+```
+
+Every new use case adds another prop, and the component's internals fill with conditionals checking all of them. The alternative — composition — lets the _caller_ assemble the pieces instead of the component trying to anticipate every combination:
+
+```tsx
+<Card>
+  <Card.Header>Title</Card.Header>
+  <Card.Body>Content</Card.Body>
+</Card>
+```
+
+This works because React lets you pass components (including via `children`) as easily as data. The component doesn't need to know about "header" and "footer" as concepts baked into its props API — it just renders whatever it's given, wherever it's given. This is the same principle behind why `<div>` doesn't have a `showBold` prop — you compose `<strong>` inside it instead.
+
+## Container vs. presentational — a pattern that's faded, for a good reason
+
+Older React codebases often separate components into two categories: **container components** (fetch data, hold state, contain logic) and **presentational components** (receive props, render UI, contain no logic of their own).
+
+This pattern largely existed to solve a specific problem: before hooks, sharing stateful logic between components required either class inheritance or awkward patterns like render props and higher-order components. Splitting "logic" and "presentation" into separate components was one way to keep the messy stateful part isolated.
+
+Hooks removed most of that need — logic can now live in a `useSomething()` hook, reusable across components, without forcing an entire component split. The distinction still shows up in some codebases and can still be a reasonable organizational choice, but it's worth knowing it's no longer solving the problem it was invented for.
+
+## Signs a component has too much responsibility
+
+There's no hard rule, but a few signals are reliable in practice:
+
+- **A long, unrelated prop list** — props that don't obviously belong to the same concern (`userId`, `onSort`, `theme`, `isModalOpen` all on one component) usually means it's doing several jobs.
+- **Multiple pieces of state that don't interact** — if two `useState` calls in the same component are never read or updated together, they may belong in two components.
+- **Deeply nested conditional rendering** — several layers of `if`/ternary just to decide _what_ to render, rather than _how_, often means the component is standing in for several simpler ones.
+
+None of these are automatic disqualifiers — they're signals worth noticing, not a checklist to blindly split against.
+
+## Compound components: shared state without drilling
+
+Some component families need to coordinate — a `<Select>` and its `<Select.Option>` children need to agree on which option is selected, without the parent explicitly passing `selectedValue` and `onSelect` down to every single option as props.
+
+The **compound component** pattern solves this using Context internally, but presents a clean, implicit API to whoever's using it:
+
+```tsx
+<Select value={value} onChange={setValue}>
+  <Select.Option value="a">A</Select.Option>
+  <Select.Option value="b">B</Select.Option>
+</Select>
+```
+
+`Select` sets up a Context provider internally; `Select.Option` reads from it. The caller never sees the Context — they just get a natural-feeling API where the pieces "just know" how to work together. This is a direct application of the Context mechanics covered in the state management chapter, used here for component wiring rather than app-wide state.
+
+## Three ways to share logic across components
+
+Roughly in order of how common each is in modern code:
+
+1. **Custom hooks** (`useToggle()`, `useFetch()`) — the default today. Share stateful logic without sharing any UI structure at all.
+2. **Slots via `children`** — share layout/structure while letting the consumer control content, as in the composition example above.
+3. **Render props** (`<DataFetcher render={(data) => <List data={data} />} />`) — largely superseded by hooks, but still shows up in some libraries predating widespread hooks adoption, and worth recognizing when you encounter it.
+
+## The practical takeaway
+
+None of these patterns are "correct" in isolation — they're each a response to a specific coordination problem: too many prop variations → composition; sharing stateful logic → hooks; children needing to coordinate → compound components. The mistake is picking a pattern because it's fashionable rather than because a component is actually straining against a specific limitation. Architecture decisions should follow from how a component needs to _change and be reused over time_, not from what looks elegant on day one.
