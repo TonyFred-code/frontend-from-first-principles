@@ -1,5 +1,6 @@
 import { MDXRemote } from "next-mdx-remote/rsc";
 import {
+  extractHeadings,
   getAdjacentChapters,
   getAllChapterFiles,
   getChapterBySlug,
@@ -12,6 +13,11 @@ import Link from "next/link.js";
 import { ChapterCheckbox } from "@/components/ChapterCheckbox";
 import { ChapterNav } from "@/components/ChapterNav";
 import rehypePrettyCode from "rehype-pretty-code";
+import {
+  MobileTableOfContents,
+  TableOfContents,
+} from "@/components/TableOfContents";
+import rehypeSlug from "rehype-slug";
 
 export function generateStaticParams() {
   const files = getAllChapterFiles();
@@ -46,45 +52,53 @@ export default async function ChapterPage({
   if (!chapter) notFound();
 
   const { prev, next } = getAdjacentChapters(chapter.frontmatter.slug);
+  const headings = extractHeadings(chapter.content);
 
   return (
-    <article className="max-w-2xl mx-auto px-6 py-12">
-      <Link
-        href="/"
-        className="font-mono text-sm text-line hover:text-signal-red transition-colors"
-      >
-        ← back
-      </Link>
+    <div className="max-w-5xl mx-auto px-6 py-12 flex gap-12">
+      <article className="max-w-2xl flex-1">
+        <Link
+          href="/"
+          className="font-mono text-sm text-line hover:text-signal-red transition-colors"
+        >
+          ← back
+        </Link>
 
-      <p className="font-mono text-xs text-line mt-6">
-        {chapter.frontmatter.readTime}
-      </p>
-      <h1 className="font-display text-4xl text-signal-orange mt-2 mb-4">
-        {chapter.frontmatter.title}
-      </h1>
+        <p className="font-mono text-xs text-line mt-6">
+          {chapter.frontmatter.readTime}
+        </p>
+        <h1 className="font-display text-4xl text-signal-orange mt-2 mb-4">
+          {chapter.frontmatter.title}
+        </h1>
 
-      <ChapterCheckbox slug={chapter.frontmatter.slug} />
+        <ChapterCheckbox slug={chapter.frontmatter.slug} />
 
-      <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange mt-8">
-        <MDXRemote
-          source={chapter.content}
-          options={{
-            mdxOptions: {
-              rehypePlugins: [
-                [
-                  rehypePrettyCode,
-                  {
-                    theme: { light: "github-light", dark: "github-dark" },
-                    keepBackground: false,
-                  },
+        <MobileTableOfContents headings={headings} />
+
+        <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange prose-pre:bg-transparent prose-pre:p-0 mt-8">
+          <MDXRemote
+            source={chapter.content}
+            options={{
+              mdxOptions: {
+                rehypePlugins: [
+                  rehypeSlug,
+                  [
+                    rehypePrettyCode,
+                    {
+                      theme: { light: "github-light", dark: "github-dark" },
+                      keepBackground: false,
+                    },
+                  ],
                 ],
-              ],
-            },
-          }}
-        />{" "}
-      </div>
+              },
+            }}
+          />
+        </div>
 
-      <ChapterNav prev={prev} next={next} />
-    </article>
+        <ChapterNav prev={prev} next={next} />
+      </article>
+
+      <TableOfContents headings={headings} />
+    </div>
   );
 }
