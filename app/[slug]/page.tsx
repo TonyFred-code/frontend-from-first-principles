@@ -17,6 +17,7 @@ import {
 } from "@/components/TableOfContents";
 import rehypeSlug from "rehype-slug";
 import { Pre } from "@/components/Pre";
+import { ChapterKeyboardNav } from "@/components/ChapterKeyboardNav";
 
 export function generateStaticParams() {
   return getAllChapters().map((chapter) => ({ slug: chapter.slug }));
@@ -116,6 +117,7 @@ export default async function ChapterPage({
         </div>
 
         <ChapterNav prev={prev} next={next} />
+        <ChapterKeyboardNav prev={prev} next={next} />
       </article>
 
       <TableOfContents headings={headings} />

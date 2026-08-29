@@ -11,6 +11,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 import { ScrollProgress } from "@/components/ScrollProgress";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { CommandPalette } from "@/components/CommandPalette";
+import { getAllChapters } from "@/lib/content";
+import { ShortcutsHelp } from "@/components/ShortcutsHelp";
 
 const architectsDaughter = Architects_Daughter({
   subsets: ["latin"],
@@ -56,6 +59,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const chapters = getAllChapters();
+
   return (
     <html
       lang="en"
@@ -73,9 +78,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
           <main className="flex-1">{children}</main>
 
-          <footer className="border-t border-line px-6 py-4 text-sm text-line font-mono">
-            Built one render cycle at a time.
+          <footer className="border-t border-line px-6 py-4 text-sm text-line font-mono flex items-center justify-between">
+            <span>Built one render cycle at a time.</span>
+            <span>
+              Press{" "}
+              <kbd className="px-1.5 py-0.5 bg-panel border border-line rounded">
+                ?
+              </kbd>{" "}
+              for shortcuts
+            </span>
           </footer>
+          <CommandPalette chapters={chapters} />
+          <ShortcutsHelp />
           <ScrollProgress />
           <ScrollToTop />
         </ThemeProvider>
