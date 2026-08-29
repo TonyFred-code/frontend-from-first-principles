@@ -63,3 +63,17 @@ export function getAdjacentChapters(slug: string): {
     next: index < chapters.length - 1 ? chapters[index + 1] : null,
   };
 }
+
+export type Heading = { text: string; slug: string };
+
+export function extractHeadings(content: string): Heading[] {
+  const matches = [...content.matchAll(/^##\s+(.+)$/gm)];
+  return matches.map((m) => ({
+    text: m[1].trim(),
+    slug: m[1]
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-"),
+  }));
+}
