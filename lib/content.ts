@@ -4,6 +4,8 @@ import matter from "gray-matter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
+const WORDS_PER_MINUTE = 200;
+
 export type ChapterFrontmatter = {
   title: string;
   slug: string;
@@ -35,17 +37,25 @@ export function getChapterBySlug(slug: string): Chapter | null {
   const raw = fs.readFileSync(path.join(CONTENT_DIR, match), "utf-8");
   const { data, content } = matter(raw);
 
-  return { frontmatter: data as ChapterFrontmatter, content };
+  return {
+    frontmatter: {
+      ...(data as ChapterFrontmatter),
+      readTime: calculateReadTime(content),
+    },
+    content,
+  };
 }
-
 export function getAllChapters(): ChapterFrontmatter[] {
-  const files = getAllChapterFiles().sort(); // filenames sort correctly since they're zero-padded (01-, 02-...)
+  const files = getAllChapterFiles().sort();
 
   return files
     .map((file) => {
       const raw = fs.readFileSync(path.join(CONTENT_DIR, file), "utf-8");
-      const { data } = matter(raw);
-      return data as ChapterFrontmatter;
+      const { data, content } = matter(raw);
+      return {
+        ...(data as ChapterFrontmatter),
+        readTime: calculateReadTime(content),
+      };
     })
     .filter((chapter) => chapter.published);
 }
@@ -77,4 +87,10 @@ export function extractHeadings(content: string): Heading[] {
       .replace(/[^\w\s-]/g, "")
       .replace(/\s+/g, "-"),
   }));
+}
+
+export function calculateReadTime(content: string): string {
+  const words = content.trim().split(/\s+/).length;
+  const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
+  return `${minutes} min`;
 }
