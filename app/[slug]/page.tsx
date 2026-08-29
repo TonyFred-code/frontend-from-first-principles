@@ -1,11 +1,16 @@
 import { MDXRemote } from "next-mdx-remote/rsc";
-import { getAllChapterFiles, getChapterBySlug } from "@/lib/content";
+import {
+  getAdjacentChapters,
+  getAllChapterFiles,
+  getChapterBySlug,
+} from "@/lib/content";
 import { notFound } from "next/navigation";
 import matter from "gray-matter";
 import fs from "fs";
 import path from "path";
 import Link from "next/link.js";
 import { ChapterCheckbox } from "@/components/ChapterCheckbox";
+import { ChapterNav } from "@/components/ChapterNav";
 
 export function generateStaticParams() {
   const files = getAllChapterFiles();
@@ -39,6 +44,8 @@ export default async function ChapterPage({
 
   if (!chapter) notFound();
 
+  const { prev, next } = getAdjacentChapters(chapter.frontmatter.slug);
+
   return (
     <article className="max-w-2xl mx-auto px-6 py-12">
       <Link
@@ -60,6 +67,8 @@ export default async function ChapterPage({
       <div className="prose dark:prose-invert max-w-none prose-headings:font-display prose-headings:text-signal-orange prose-a:text-signal-orange mt-8">
         <MDXRemote source={chapter.content} />
       </div>
+
+      <ChapterNav prev={prev} next={next} />
     </article>
   );
 }
