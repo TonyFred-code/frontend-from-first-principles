@@ -1,0 +1,54 @@
+---
+title: "Build Tools & Bundlers"
+slug: "build-tools-bundlers"
+description: "What a bundler actually does, and why modern dev tooling feels instant compared to what came before."
+published: true
+date: "2026-08-29"
+---
+
+## What a bundler actually does
+
+At its core, a bundler takes many separate files — your components, their imports, third-party packages — and combines them into a smaller number of files a browser can load efficiently, resolving the dependency graph between them along the way. `import Button from "./Button"` only works the way it does in your source code because a bundler traces that reference, finds the file, and figures out what order things need to be combined in.
+
+## Life before bundlers
+
+Before this tooling existed, the standard approach was one `<script>` tag per file, loaded in a specific manual order:
+
+```html
+<script src="jquery.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+```
+
+This had real problems: every script shared one global scope (so two libraries defining a variable with the same name silently clashed), load order had to be tracked by hand, and there was no way to say "this file depends on that one" other than getting the `<script>` tags in the right sequence yourself. `import`/`export` syntax and bundlers solve this together — modules get their own scope, dependencies are explicit, and a bundler resolves the correct order automatically instead of a human maintaining it.
+
+## Transpilation and bundling are different jobs
+
+These two get conflated constantly, but they solve unrelated problems:
+
+- **Transpilation** (Babel, SWC) — converts syntax you write into syntax a target environment understands. Optional chaining, JSX, newer JS features — none of that is natively understood by every browser your users might have, so transpilation rewrites it into something more broadly compatible.
+- **Bundling** (webpack, Vite, esbuild, Turbopack) — combines multiple files into fewer files, resolving the module dependency graph.
+
+A modern toolchain does both, often via the same command, which is exactly why they get treated as one thing — but you can transpile without bundling (a single file, converted) and, less commonly, bundle without transpiling (all-modern-syntax code, combined but unconverted).
+
+## Tree-shaking: removing code nobody uses
+
+If you `import { Button } from "some-library"` but that library exports fifty components, tree-shaking is the process of including only `Button` in your final bundle — not the other forty-nine you never referenced.
+
+This depends specifically on **ES modules' static structure** — `import`/`export` statements are fixed at the top of a file, analyzable without running any code. Older CommonJS (`require`/`module.exports`) is dynamic — `require` can technically be called conditionally, inside a function, with a computed path — which makes it much harder for a bundler to statically prove "this export is never used." This is a real, practical reason modern libraries ship ES module builds specifically: it's not just a stylistic preference, it's what makes tree-shaking actually work.
+
+## Code-splitting: not shipping everything at once
+
+A single giant bundle means every visitor downloads _all_ of your app's code before anything can run — including code for pages they may never visit. **Code-splitting** breaks the bundle into multiple chunks, loaded on demand.
+
+The mechanism is `import()` as a function call (rather than the static `import` statement at the top of a file) — a dynamic import returns a Promise, and a bundler recognizes this pattern specifically as "this is a split point, generate a separate chunk here." Next.js's own route-based structure does this automatically per-page — visiting `/state-management` doesn't download the JS bundle for `/rendering-strategies`, because the router's file-based structure already gives the bundler natural split points.
+
+## Why dev servers feel instant now
+
+Older bundler-based dev servers had to bundle your _entire_ application before serving the first page, even in development — meaning startup time scaled with project size. Modern tools like Vite (and this project's Turbopack) take a different approach in dev mode: they serve modules using the browser's **native ES module support** directly, transforming files on-demand only as they're actually requested by the browser, rather than pre-bundling everything upfront. This is why editing one file and seeing the change (**Hot Module Replacement**, or HMR) is near-instant — only the changed module needs reprocessing, not the whole dependency graph.
+
+Production builds still fully bundle and optimize everything (native ESM in the browser isn't fast enough at scale for a real production load) — the on-demand approach is specifically a development-time trick, not how the site actually ships.
+
+## Where this project fits in
+
+Every `npm run dev` and `npm run build` you've run throughout this project has been going through Turbopack — Next.js's current-generation bundler, built specifically to apply the same on-demand, native-ESM-in-dev philosophy that made Vite fast, integrated directly into the framework rather than bolted on separately. You've never touched a bundler config file directly in this whole build — and that's itself the point of where this tooling has moved: the bundler is increasingly an invisible implementation detail of the framework, not something most projects configure by hand the way older webpack-based setups required.

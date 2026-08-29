@@ -1,0 +1,151 @@
+---
+title: "Data Fetching Patterns"
+slug: "data-fetching-patterns"
+readTime: "17 min"
+description: "Loading states, race conditions, optimistic UI, and what Suspense changes about all of it."
+published: true
+date: "2026-08-29"
+---
+
+## The basic fetch lifecycle
+
+Almost every piece of UI that fetches data is secretly a small state machine, whether or not the code admits it. At minimum, there are three states: **loading**, **success**, and **error**. A component showing a user's profile isn't just "profile" or "no profile" — it's "we're waiting to find out," "here's the data," or "the request failed and here's why."
+
+```jsx
+function Profile({ userId }) {
+  const [status, setStatus] = useState("loading");
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setStatus("loading");
+    fetch(`/api/users/${userId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setData(data);
+        setStatus("success");
+      })
+      .catch((err) => {
+        setError(err);
+        setStatus("error");
+      });
+  }, [userId]);
+
+  if (status === "loading") return <Spinner />;
+  if (status === "error") return <ErrorMessage error={error} />;
+  return <ProfileCard data={data} />;
+}
+```
+
+Skipping any of these three states isn't simplifying the component — it's just handling that state implicitly and badly (usually as a blank screen, or a crash when `data` is still `null`).
+
+## `useEffect` fetching and its pitfalls
+
+The pattern above has a real bug: if `userId` changes quickly (user clicks between two profiles fast), two fetches are now in flight, and there's no guarantee they resolve in the order they were sent. If the fetch for the _first_ `userId` happens to resolve _after_ the fetch for the second, the component ends up displaying stale data for the wrong user — silently, with no error.
+
+This is a **race condition**, and the standard fix is to ignore the result of any request that's no longer the "current" one, using the effect's cleanup function:
+
+```jsx
+useEffect(() => {
+  let ignore = false;
+  setStatus("loading");
+
+  fetch(`/api/users/${userId}`)
+    .then((res) => res.json())
+    .then((data) => {
+      if (!ignore) {
+        setData(data);
+        setStatus("success");
+      }
+    });
+
+  return () => {
+    ignore = true;
+  };
+}, [userId]);
+```
+
+When `userId` changes, React runs the cleanup function from the _previous_ effect run before running the new one — so `ignore` flips to `true` for the stale request, and its `.then()` becomes a no-op. An `AbortController` accomplishes the same goal more directly, and additionally cancels the actual network request instead of just ignoring its result:
+
+```jsx
+useEffect(() => {
+  const controller = new AbortController();
+  setStatus("loading");
+
+  fetch(`/api/users/${userId}`, { signal: controller.signal })
+    .then((res) => res.json())
+    .then((data) => {
+      setData(data);
+      setStatus("success");
+    })
+    .catch((err) => {
+      if (err.name !== "AbortError") {
+        setError(err);
+        setStatus("error");
+      }
+    });
+
+  return () => controller.abort();
+}, [userId]);
+```
+
+## Loading and error states as first-class UI
+
+"Just render nothing until the data arrives" is a common default, and it's usually the wrong one — a blank area gives the user no signal that anything is happening, which reads as the page being broken rather than busy.
+
+Two common approaches, and they communicate different things:
+
+- **Spinners** signal "something is happening, duration unknown." Fine for short, unpredictable waits.
+- **Skeletons** (gray placeholder shapes matching the eventual layout) signal "this specific content is coming" and reduce the visual jolt when real content replaces them, since the layout doesn't shift. Skeletons generally read as faster even at the same actual load time, because the user's brain has already started parsing the eventual layout.
+
+Error states matter just as much and are more often skipped entirely — a failed fetch with no error UI usually just leaves the loading state (or a blank screen) on forever, with no way for the user to tell something went wrong or to retry.
+
+## Optimistic UI
+
+Some interactions feel best when the UI updates _before_ the server confirms anything — liking a post, checking off a todo, sending a chat message. Waiting for a round-trip on every one of these makes an app feel sluggish even if the server is fast.
+
+**Optimistic UI** updates local state immediately, sends the request in the background, and only rolls back if the request actually fails:
+
+```jsx
+function TodoItem({ todo }) {
+  const [completed, setCompleted] = useState(todo.completed);
+
+  async function handleToggle() {
+    const previous = completed;
+    setCompleted(!completed); // update immediately
+
+    try {
+      await updateTodo(todo.id, { completed: !previous });
+    } catch {
+      setCompleted(previous); // roll back on failure
+    }
+  }
+
+  return <Checkbox checked={completed} onChange={handleToggle} />;
+}
+```
+
+The trade-off is honesty: for a brief window, the UI is showing something the server hasn't actually agreed to yet. For low-stakes, easily-reversible actions (a checkbox, a like) this is a good trade. For anything where a failed rollback would be jarring or costly (payment confirmation, an irreversible delete), waiting for the real response is usually the safer default.
+
+## Suspense for data fetching
+
+Everything above is manual: you write the loading state, the error state, the race-condition guard, by hand, in every component that fetches something. **Suspense** offers a different model — a component "suspends" (pauses rendering) while its data isn't ready yet, and a `<Suspense>` boundary higher up the tree shows a fallback until it resolves.
+
+```jsx
+<Suspense fallback={<Spinner />}>
+  <Profile userId={userId} />
+</Suspense>
+```
+
+Here, `Profile` itself doesn't manage `status` or `data` state at all — it reads data through a mechanism (a framework's data-fetching hook, or a cache that throws a promise while pending) that Suspense understands, and the loading UI is declared once, at the boundary, rather than duplicated inside every component that fetches. This shifts loading-state handling from "something every fetching component writes" to "something the tree structure expresses" — a real structural change, not just a styling difference from the manual pattern.
+
+Suspense doesn't eliminate the concepts above — race conditions, error boundaries, and optimistic updates are all still real concerns — it just relocates where loading state lives and who's responsible for declaring it.
+
+## Why this matters
+
+- _"Why did the wrong user's data flash on screen for a second?"_ — a race condition; add request cancellation or an ignore-flag guard.
+- _"Why does my app feel like it's stuck?"_ — likely a missing or unclear loading state; check whether "loading" is even a state your component tracks.
+- _"Why did the checkbox flip back on its own?"_ — optimistic UI correctly rolling back after a failed request; that's the mechanism working, not a bug — though it's worth checking why the request failed.
+- _"Why does adding Suspense mean I don't write my own loading state anymore?"_ — the responsibility moved to the boundary above the component, not away entirely.
+
+Fetching data is the easy 80%; handling every state around that fetch honestly is the harder, more important 20% that actually determines whether an app feels reliable.

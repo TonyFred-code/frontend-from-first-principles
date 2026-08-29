@@ -1,0 +1,57 @@
+---
+title: "Rendering Strategies: CSR, SSR, SSG & Islands"
+slug: "rendering-strategies"
+description: "Where rendering can actually happen, and the real trade-off each strategy is making."
+published: true
+date: "2026-08-29"
+---
+
+## Rendering is a spectrum, not a binary choice
+
+"Client-side vs. server-side" makes it sound like two options. In practice, the real question is **when** HTML gets generated — and there are meaningfully different answers: at build time, at request time, or in the browser after the page loads. Every rendering strategy is really just a different answer to that one question, with different trade-offs attached.
+
+## CSR: ship a shell, let the browser do the work
+
+**Client-Side Rendering** — the server sends a nearly-empty HTML shell (`<div id="root"></div>`) plus a JavaScript bundle. The browser downloads the bundle, runs it, and only then builds the actual page.
+
+The cost is upfront: nothing meaningful is visible until JS downloads, parses, and executes — on a slow connection or device, that's a real, visible delay before there's anything to look at. The benefit shows up _after_ that: once the app is loaded, navigating between "pages" within it can be instant, since there's no new HTML document to fetch — just data.
+
+## SSR: render HTML per request, on the server
+
+**Server-Side Rendering** — the server runs your component code _for every incoming request_ and sends back fully-formed HTML. The browser has something to paint immediately, before any JS has even downloaded.
+
+The cost shows up differently than CSR's: every request now costs server compute time, and — critically — the HTML that arrives isn't yet interactive. Buttons don't respond to clicks until JavaScript downloads and **hydrates** the page (more on this below). So SSR trades "nothing to see" for "something to see, but not yet interactive" — a different gap, not a fully solved one.
+
+## SSG: render once, at build time
+
+**Static Site Generation** — instead of rendering per-request, pages are rendered once, ahead of time, when you run your build. The output is plain HTML files, served instantly from a CDN with no server compute per visitor at all.
+
+This is exactly what `generateStaticParams` does in your own project — every chapter page is generated once during `npm run build`, not recomputed per visitor. The trade-off: if the underlying content changes, the static output doesn't know until you rebuild and redeploy. Fine for a chapter that rarely changes; wrong for a live stock price.
+
+## ISR: the bridge between SSG and SSR
+
+**Incremental Static Regeneration** exists to soften SSG's staleness problem without paying SSR's per-request cost on every visit. The idea: serve the static (possibly stale) version instantly, but periodically regenerate it in the background — a visitor might get a slightly-stale page, but the _next_ visitor after regeneration gets the fresh one, without ever paying a full server-render cost on the critical path of a request. It's less a fourth separate strategy than a refinement of SSG's staleness trade-off specifically.
+
+## Islands: static by default, interactive in isolated pockets
+
+Most of a typical page — navigation, footer, body text — doesn't actually need JavaScript at all; it's genuinely static content. **Islands architecture** takes this seriously: render the whole page as static HTML, then hydrate only the _specific components_ that need interactivity (a cart widget, a comment form) as isolated "islands," each with its own independent JS bundle.
+
+This is a meaningfully different model from "hydrate the whole page," which SSR/SSG traditionally do — islands avoid paying hydration cost for the 90% of a page that was never going to change anyway.
+
+## Hydration: the hidden cost SSR and SSG both still pay
+
+**Hydration** is the process of taking server-rendered (or statically-generated) HTML that's already visible, and attaching React's event listeners and internal state to it in the browser — turning static markup into an interactive app, without re-rendering visible content from scratch.
+
+This is worth naming explicitly because it's easy to think SSR/SSG "solve" the JS-loading problem CSR has. They solve _visibility_ — there's something to look at immediately — but not _interactivity_: buttons, forms, and click handlers still don't work until hydration finishes, which still requires downloading and running JS. The gap is smaller and less visually jarring than CSR's blank screen, but it isn't zero. This is exactly the problem islands architecture is trying to shrink further, by hydrating only what actually needs it.
+
+## Choosing a strategy in practice
+
+None of these are strictly "better" — they answer different questions:
+
+- **Mostly static content, changes rarely** → SSG (this site's chapters).
+- **Content changes often, but not per-request** → ISR.
+- **Content genuinely differs per-request** (personalized dashboards, live data) → SSR.
+- **Heavy interactivity, content matters less than app behavior** (an internal admin tool) → CSR is often fine.
+- **Content-heavy page with a few interactive widgets** → islands, if your framework supports it.
+
+The question worth asking for any given page isn't "which strategy is modern" — it's "when does this page's content actually need to be correct, and how much of it needs to be interactive."

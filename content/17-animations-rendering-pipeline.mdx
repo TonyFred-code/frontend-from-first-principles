@@ -1,0 +1,88 @@
+---
+title: "Animations & the Rendering Pipeline"
+slug: "animations-rendering-pipeline"
+readTime: "16 min"
+description: "Why some CSS properties animate smoothly and others janky — and what that has to do with the pipeline from Chapter 1."
+published: true
+date: "2026-08-29"
+---
+
+## Why some properties animate smoothly and others don't
+
+Not all CSS properties are equal when it comes to animation cost. Animate `opacity` or `transform` and you'll typically get a buttery-smooth 60fps. Animate `width`, `top`, or `margin` the same way and you'll often see visible stutter, especially on lower-end devices. The properties look interchangeable in CSS syntax — `transition: width 0.3s` reads the same as `transition: transform 0.3s` — but they trigger completely different amounts of work under the hood.
+
+This isn't arbitrary; it's a direct consequence of the render pipeline covered in Chapter 1.
+
+## The rendering pipeline, applied to animation
+
+Recall the pipeline: **layout** (compute the size/position of every element) → **paint** (figure out the pixels for each element) → **composite** (combine painted layers onto the screen). Every frame of an animation has to run through however much of this pipeline the changed property requires.
+
+- Changing `width`, `height`, `top`, `left`, or `margin` changes an element's box — the browser has to redo **layout** for that element and potentially everything affected by it, then **repaint**, then **recomposite**. All three stages, every single frame.
+- Changing `transform` (translate, scale, rotate) or `opacity` doesn't affect any element's box at all — the element's size and position in the layout tree don't change, only how it's drawn on the already-existing layer. The browser can skip layout _and_ paint, going straight to **composite** — and composite runs efficiently on the GPU.
+
+This is the entire reason "prefer `transform` and `opacity` for animations" is repeated so consistently in performance guidance — it's not a stylistic preference, it's the difference between a full three-stage pipeline run per frame and a GPU-composited skip straight to the last stage.
+
+```css
+/* Triggers layout + paint + composite every frame */
+.slide-in-slow {
+  transition: left 0.3s;
+}
+
+/* Composite-only — skips layout and paint */
+.slide-in-fast {
+  transition: transform 0.3s;
+}
+```
+
+Both can produce the same visual motion — sliding an element in from the left — but one is dramatically cheaper per frame than the other.
+
+## `requestAnimationFrame`
+
+For JavaScript-driven animation (as opposed to CSS transitions/animations), `requestAnimationFrame` exists specifically to sync your code with the browser's actual repaint cycle, instead of guessing at timing with `setTimeout`.
+
+```js
+function animate() {
+  element.style.transform = `translateX(${position}px)`;
+  position += 2;
+  if (position < 300) requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+```
+
+`setTimeout(fn, 16)` _assumes_ the browser refreshes roughly every 16ms (60fps) and just fires blindly on that assumption — it can run out of sync with the actual repaint, causing dropped or doubled frames. `requestAnimationFrame` instead asks the browser to call your function right before its next repaint, whatever that timing actually is on the current device and display — including automatically adapting to 120Hz displays instead of assuming 60fps.
+
+## CSS transitions vs. CSS animations vs. JS animation libraries
+
+Three tools, three different jobs:
+
+- **CSS transitions** — animate a property from its current value to a new value, triggered by a state change (hover, a class toggle). Best for simple, one-directional "this changed, animate to the new state" cases.
+- **CSS animations** (`@keyframes`) — define a multi-step sequence independent of any state change, can loop, can have multiple keyframe steps. Best for anything more complex than a single A-to-B transition — a pulsing loading indicator, a multi-stage entrance animation.
+- **JS animation libraries** (Framer Motion, GSAP, etc.) — needed when animation needs to respond to runtime values CSS can't express alone (physics-based spring animations, animating based on scroll position or drag gesture, orchestrating complex sequences across multiple elements with precise timing dependencies).
+
+The general guidance: reach for CSS first (transitions, then keyframes) since it's cheaper and simpler, and drop to JS only when the animation genuinely needs logic CSS can't express.
+
+## Common performance traps
+
+- **Animating `box-shadow` or `filter`** — these force a repaint of the element on every frame even though they don't affect layout, so they're cheaper than animating `width` but still noticeably more expensive than `transform`/`opacity`. `will-change: transform` can hint the browser to promote an element to its own composited layer ahead of time, but overusing it on many elements can backfire by consuming excessive GPU memory.
+- **Layout thrashing** — reading a layout property (`element.offsetHeight`) immediately after writing one (`element.style.width = ...`) forces the browser to synchronously recalculate layout right then, instead of batching it efficiently before the next paint. Doing this in a loop — write, read, write, read — forces a full synchronous layout recalculation on every iteration, which is dramatically slower than doing all the writes first and all the reads after.
+
+```js
+// Layout thrashing: forces synchronous layout on every iteration
+elements.forEach((el) => {
+  el.style.width = "100px";
+  console.log(el.offsetHeight); // forces layout to answer this
+});
+
+// Batched: one layout recalculation total
+elements.forEach((el) => (el.style.width = "100px"));
+elements.forEach((el) => console.log(el.offsetHeight));
+```
+
+## Why this matters
+
+- _"Why does my slide-in animation stutter on lower-end phones but look fine on my laptop?"_ — likely animating a layout-triggering property (`left`, `width`) instead of `transform`; layout/paint cost scales with device capability, composite is comparatively cheap everywhere.
+- _"Why did wrapping my animation in `requestAnimationFrame` fix the choppiness that `setTimeout` had?"_ — sync with the actual repaint cycle instead of a fixed-interval guess.
+- _"Why is my page slow when I loop over many elements measuring and resizing them?"_ — layout thrashing; batch all writes before any reads.
+- _"Why does the same visual motion feel dramatically more expensive in one implementation than another?"_ — check which CSS property is actually being animated, and which pipeline stages that property forces per frame.
+
+Animation performance is really just render-pipeline knowledge applied to something highly visible — the same layout/paint/composite model from Chapter 1 explains almost every "why is this animation janky" question you'll run into.
