@@ -2,14 +2,11 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import {
   extractHeadings,
   getAdjacentChapters,
-  getAllChapterFiles,
+  getAllChapters,
   getChapterBySlug,
   getDisplayDate,
 } from "@/lib/content";
 import { notFound } from "next/navigation";
-import matter from "gray-matter";
-import fs from "fs";
-import path from "path";
 import Link from "next/link.js";
 import { ChapterCheckbox } from "@/components/ChapterCheckbox";
 import { ChapterNav } from "@/components/ChapterNav";
@@ -21,15 +18,7 @@ import {
 import rehypeSlug from "rehype-slug";
 
 export function generateStaticParams() {
-  const files = getAllChapterFiles();
-  return files.map((file) => {
-    const raw = fs.readFileSync(
-      path.join(process.cwd(), "content", file),
-      "utf-8",
-    );
-    const { data } = matter(raw);
-    return { slug: data.slug };
-  });
+  return getAllChapters().map((chapter) => ({ slug: chapter.slug }));
 }
 
 export async function generateMetadata({

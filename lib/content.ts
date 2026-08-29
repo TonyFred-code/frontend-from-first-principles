@@ -30,7 +30,7 @@ export function getChapterBySlug(slug: string): Chapter | null {
   const match = files.find((file) => {
     const raw = fs.readFileSync(path.join(CONTENT_DIR, file), "utf-8");
     const { data } = matter(raw);
-    return data.slug === slug;
+    return data.slug === slug && data.published;
   });
 
   if (!match) return null;
@@ -46,6 +46,7 @@ export function getChapterBySlug(slug: string): Chapter | null {
     content,
   };
 }
+
 export function getAllChapters(): ChapterFrontmatter[] {
   const files = getAllChapterFiles().sort();
 
