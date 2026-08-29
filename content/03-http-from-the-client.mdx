@@ -1,0 +1,59 @@
+---
+title: "HTTP from the Client Side"
+slug: "http-from-the-client"
+readTime: "18 min"
+description: "How fetch, caching, and CORS actually work from inside the browser."
+published: true
+date: "2026-08-29"
+---
+
+## fetch is not magic — it's a thin wrapper
+
+`fetch(url)` looks like a single function call, but underneath it, the browser is doing the same thing it does for any network request: opening a connection, sending an HTTP request line and headers, waiting for a response, and streaming the body back. `fetch` is a JavaScript-friendly interface onto that same underlying network stack — not a special "AJAX pipe" separate from how the browser loads images, scripts, or the page itself.
+
+This matters because it means everything that applies to HTTP in general — status codes, headers, caching, redirects — applies to `fetch` too. There's no separate rulebook for "requests made from JS."
+
+## Request and response as objects
+
+A `fetch` call returns a `Response` object, and it's worth knowing what's actually on it, because a lot of confusion comes from treating it like the final data:
+
+```js
+const response = await fetch("/api/chapters");
+
+response.status; // 200, 404, 500...
+response.ok; // true only for 200-299
+response.headers; // a Headers object, not a plain object
+const data = await response.json(); // this is a SEPARATE async step
+```
+
+Two things trip people up here. First, **`fetch` only rejects on network failure** — a DNS failure, no connection, etc. A `404` or `500` response is still a _successful_ fetch as far as the Promise is concerned; `response.ok` is what you check, not a try/catch. Second, **reading the body is its own async operation** (`.json()`, `.text()`, `.blob()`) — the initial `await fetch()` resolves once headers arrive, not once the full body has downloaded.
+
+## Caching: the browser's decision, not just the server's
+
+When a response includes a `Cache-Control` header, it's telling the browser's HTTP cache how to treat that resource for future requests — and this genuinely changes _whether a network request happens at all_, not just what happens once it does.
+
+A few concrete behaviors:
+
+- `Cache-Control: max-age=3600` — the browser can reuse this response for an hour without any network request. Not even a "check if it changed" request — nothing.
+- `Cache-Control: no-cache` — confusingly, this does **not** mean "don't cache." It means "cache it, but revalidate with the server before reusing it" (a conditional request using `ETag`/`If-None-Match`, which can return a cheap `304 Not Modified` instead of the full body again).
+- `Cache-Control: no-store` — this is the one that actually means "don't cache at all."
+
+This is why "just add a random query param to bust the cache" works — it's not clearing the cache, it's making the browser treat it as a URL it's never seen before, sidestepping the cache lookup entirely rather than actually invalidating anything.
+
+## CORS: a browser-enforced restriction, not a network security feature
+
+This is the part that confuses people most, so it's worth stating plainly: **CORS is enforced by the browser, on behalf of the user — it is not something that protects the server.** A server without CORS headers is not "insecure"; it's just not opted-in to being called from a _different origin's_ JavaScript. The same server is perfectly reachable via `curl`, Postman, or another server — none of those enforce CORS, because CORS is a rule browsers impose on scripts running on someone else's behalf.
+
+**Same-origin** means matching scheme + host + port exactly. `https://example.com` and `https://api.example.com` are _different_ origins (different host), even though they look related.
+
+**The preflight request** — for anything beyond a simple `GET`/`POST` with plain form data (custom headers, `Content-Type: application/json`, methods like `PUT`/`DELETE`), the browser automatically sends an `OPTIONS` request _first_, asking the server "would you allow this actual request?" via headers like `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`. Only if the server answers correctly does the browser then send the real request. You never write this `OPTIONS` request yourself — the browser generates it, and your JS code never even sees it happen.
+
+## Why "just fix it on the frontend" doesn't work
+
+A CORS error in the console is the browser refusing to hand your JavaScript the response — but critically, **the request often already happened**. For simple requests, the server received it and responded; the browser just won't let your script read that response, because the response lacked the `Access-Control-Allow-Origin` header granting permission. This is why CORS errors are, almost without exception, fixed by changing server configuration — the client has no legitimate way to grant itself permission the server didn't give.
+
+The trap worth naming explicitly: `fetch(url, { mode: "no-cors" })` looks like a fix, but it isn't one — it makes the browser send the request while deliberately giving your JS an opaque response object with no readable status, headers, or body. It exists for narrow cases like `<link>`/`<img>` prefetching, not for reading API data.
+
+## The client-side mirror of the backend series
+
+If you've read the backend-from-first-principles material, this chapter is the other half of the same conversation: that series covers `Cache-Control` and CORS headers from the server that _sends_ them; this one covers what the browser _does_ with them on arrival. Same headers, same protocol — just viewed from the two ends of the connection.
