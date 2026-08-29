@@ -48,3 +48,18 @@ export function getAllChapters(): ChapterFrontmatter[] {
     })
     .filter((chapter) => chapter.published);
 }
+
+export function getAdjacentChapters(slug: string): {
+  prev: ChapterFrontmatter | null;
+  next: ChapterFrontmatter | null;
+} {
+  const chapters = getAllChapters();
+  const index = chapters.findIndex((c) => c.slug === slug);
+
+  if (index === -1) return { prev: null, next: null };
+
+  return {
+    prev: index > 0 ? chapters[index - 1] : null,
+    next: index < chapters.length - 1 ? chapters[index + 1] : null,
+  };
+}
