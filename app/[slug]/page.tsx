@@ -4,6 +4,7 @@ import {
   getAdjacentChapters,
   getAllChapterFiles,
   getChapterBySlug,
+  getDisplayDate,
 } from "@/lib/content";
 import { notFound } from "next/navigation";
 import matter from "gray-matter";
@@ -85,7 +86,15 @@ export default async function ChapterPage({
         </Link>
 
         <p className="font-mono text-xs text-line mt-6">
-          {chapter.frontmatter.readTime}
+          {chapter.frontmatter.readTime} · updated{" "}
+          {new Date(getDisplayDate(chapter.frontmatter)).toLocaleDateString(
+            "en-US",
+            {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            },
+          )}
         </p>
         <h1 className="font-display text-4xl text-signal-orange mt-2 mb-4">
           {chapter.frontmatter.title}
