@@ -13,6 +13,7 @@ export type ChapterFrontmatter = {
   description: string;
   published: boolean;
   date: string;
+  updated?: string;
 };
 
 export type Chapter = {
@@ -93,4 +94,8 @@ export function calculateReadTime(content: string): string {
   const words = content.trim().split(/\s+/).length;
   const minutes = Math.max(1, Math.ceil(words / WORDS_PER_MINUTE));
   return `${minutes} min`;
+}
+
+export function getDisplayDate(frontmatter: ChapterFrontmatter): string {
+  return frontmatter.updated ?? frontmatter.date;
 }
