@@ -10,6 +10,7 @@ export type ChapterFrontmatter = {
   readTime: string;
   description: string;
   published: boolean;
+  date: string;
 };
 
 export type Chapter = {

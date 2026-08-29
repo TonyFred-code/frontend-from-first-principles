@@ -45,6 +45,11 @@ export const metadata: Metadata = {
     description:
       "A deep-dive into how browsers actually work — from parsing HTML to compositing pixels.",
   },
+  alternates: {
+    types: {
+      "application/rss+xml": "/rss.xml",
+    },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
