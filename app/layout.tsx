@@ -26,9 +26,25 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Frontend from First Principles",
+  metadataBase: new URL("https://frontend-from-first-principles.vercel.app"),
+  title: {
+    default: "Frontend from First Principles",
+    template: "%s | Frontend from First Principles",
+  },
   description:
     "A deep-dive into how browsers actually work — from parsing HTML to compositing pixels.",
+  openGraph: {
+    title: "Frontend from First Principles",
+    description:
+      "A deep-dive into how browsers actually work — from parsing HTML to compositing pixels.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Frontend from First Principles",
+    description:
+      "A deep-dive into how browsers actually work — from parsing HTML to compositing pixels.",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
